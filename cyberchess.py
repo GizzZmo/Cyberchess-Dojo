@@ -3,6 +3,7 @@ import chess.engine
 import chess.pgn
 import google.generativeai as genai
 import os
+import random
 import datetime
 from orchestrator import ChessOrchestrator
 
@@ -19,6 +20,10 @@ STOCKFISH_SKILL_LEVEL = 5   # 0 (weakest) – 20 (Grandmaster)
 STOCKFISH_TIME_LIMIT = 0.1  # seconds per move
 
 GEMINI_MODEL_NAME = "gemini-1.5-flash"  # Using Flash for speed
+
+# Number of independent LLM samples generated per move; the strongest
+# candidate is selected via a grandmaster ranking call (best-of-N sampling).
+BEST_OF_N = 3
 
 # --- STARTUP VALIDATION ---
 if (STOCKFISH_PATH == "YOUR_STOCKFISH_PATH_HERE" or not STOCKFISH_PATH.strip()
@@ -137,10 +142,11 @@ def play_game():
 
         else:
             # --- GEMINI ORCHESTRATOR TURN ---
-            # The orchestrator detects the game phase, selects the best agent(s),
-            # and synthesises a final move when agents disagree.
+            # Best-of-N sampling: the orchestrator generates BEST_OF_N candidate
+            # moves from the phase-appropriate agent(s) and selects the strongest
+            # via a grandmaster ranking call, improving overall move quality.
             print("Gemini Orchestrator is thinking...")
-            move = orchestrator.get_move(board)
+            move = orchestrator.get_best_move(board, n=BEST_OF_N)
             board.push(move)
             print(f"Gemini played: {move.uci()}")
             game_moves.append(move)
