@@ -53,6 +53,16 @@ class BaseChessAgent:
     # Main interface
     # ------------------------------------------------------------------
 
+    def get_move_candidates(self, board: chess.Board, n: int = 3) -> list[tuple[chess.Move, str]]:
+        """
+        Generate *n* candidate ``(move, reasoning)`` pairs via best-of-N sampling.
+
+        Each call to the model is an independent sample.  Duplicate moves are
+        retained so that sample frequency can act as a confidence signal during
+        downstream ranking.
+        """
+        return [self.get_move(board) for _ in range(n)]
+
     def get_move(self, board: chess.Board, retries: int = 3) -> tuple[chess.Move, str]:
         """
         Ask this agent for the best move on the given board.

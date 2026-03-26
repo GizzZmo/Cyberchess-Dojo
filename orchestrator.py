@@ -14,6 +14,7 @@ for complex positions.  The orchestrator pipeline:
 
 import re
 import chess
+from collections import Counter
 import google.generativeai as genai
 from agents import OpeningAgent, TacticalAgent, PositionalAgent, EndgameAgent
 
@@ -29,6 +30,15 @@ _OPENING_MOVE_LIMIT = 10
 # the endgame.  Rough guide: start value ≈ 2*(2+2+2+1) = 14 for minor pieces
 # + rooks; a queen counts as 1 in this *piece count* (not material value).
 _ENDGAME_PIECE_THRESHOLD = 6
+
+# Default number of independent LLM samples used by best-of-N move selection.
+_N_SAMPLES = 3
+
+# Maximum number of characters from agent reasoning included in the ranking prompt.
+_MAX_REASONING_LENGTH = 300
+
+# Maximum retry attempts for the LLM-based best-of-N ranking call.
+_RANKING_RETRIES = 3
 
 
 def _piece_count(board: chess.Board) -> int:
@@ -147,7 +157,135 @@ Your task:
         return fallback
 
     # ------------------------------------------------------------------
-    # Main entry point
+    # Best-of-N ranking
+    # ------------------------------------------------------------------
+
+    def _rank_candidates(
+        self,
+        board: chess.Board,
+        candidates: list[tuple[chess.Move, str]],
+    ) -> chess.Move:
+        """
+        Select the single strongest move from a list of ``(move, reasoning)``
+        candidate samples using an LLM-based ranking call.
+
+        If all samples agree (or only one candidate is provided) the move is
+        returned immediately without an extra model call.  If the ranking call
+        fails, the most-frequently-suggested candidate is used as a fallback.
+        """
+        if not candidates:
+            raise ValueError("No candidates to rank.")
+
+        unique_moves = {m for m, _ in candidates}
+        if len(unique_moves) == 1:
+            move = candidates[0][0]
+            print(f"  [Orchestrator] All {len(candidates)} samples agree on {move.uci()} — skipping ranking.")
+            return move
+
+        legal_moves = [m.uci() for m in board.legal_moves]
+
+        # Build one entry per unique move (avoids duplicate blocks in the prompt).
+        seen: set[chess.Move] = set()
+        unique_candidates: list[tuple[chess.Move, str]] = []
+        for move, reasoning in candidates:
+            if move not in seen:
+                seen.add(move)
+                unique_candidates.append((move, reasoning))
+
+        candidate_block = "\n\n".join(
+            f"Candidate {i + 1}: {move.uci()}\nReasoning: {reasoning[:_MAX_REASONING_LENGTH]}"
+            for i, (move, reasoning) in enumerate(unique_candidates)
+        )
+
+        prompt = f"""You are a chess grandmaster evaluating candidate moves for Black.
+
+Position (FEN): {board.fen()}
+Legal moves: {', '.join(legal_moves)}
+
+The following moves were proposed by analysis agents via best-of-N sampling:
+
+{candidate_block}
+
+Task:
+1. Evaluate each candidate considering material, king safety, piece activity, and long-term prospects.
+2. Select the single strongest move for Black.
+3. Briefly justify your choice (2-3 sentences).
+4. On the very last line, write ONLY the chosen UCI move (e.g. e7e5).
+"""
+
+        for attempt in range(_RANKING_RETRIES):
+            try:
+                response = self.model.generate_content(prompt)
+                raw = response.text.strip()
+                move_str = _extract_move(raw)
+                move = chess.Move.from_uci(move_str)
+                if move in board.legal_moves:
+                    print(f"  [Orchestrator] Best-of-N ranking selected: {move.uci()}")
+                    return move
+                prompt += f"\n\nERROR: '{move_str}' is not legal. Choose from: {', '.join(legal_moves)}"
+            except Exception as e:
+                print(f"  [Orchestrator] Ranking error on attempt {attempt + 1}: {e}")
+
+        # Fallback: most frequently suggested candidate.
+        best_move = Counter(move for move, _ in candidates).most_common(1)[0][0]
+        print(f"  [Orchestrator] Ranking failed — using most frequent candidate: {best_move.uci()}")
+        return best_move
+
+    # ------------------------------------------------------------------
+    # Main entry point (best-of-N)
+    # ------------------------------------------------------------------
+
+    def get_best_move(self, board: chess.Board, n: int = _N_SAMPLES) -> chess.Move:
+        """
+        Select the best move for Black using best-of-N sampling.
+
+        *n* candidate moves are independently sampled from the phase-appropriate
+        agent(s) and a ranking call selects the strongest option.
+
+        Phase routing mirrors :meth:`get_move`:
+
+        * **Opening** (moves 1-10): *n* samples from OpeningAgent.
+        * **Endgame** (≤ 6 non-pawn pieces): *n* samples from EndgameAgent.
+        * **Middlegame with tactical tension**: ⌈n/2⌉ from TacticalAgent +
+          ⌊n/2⌋ from PositionalAgent.
+        * **Quiet middlegame**: ⌈n/2⌉ from PositionalAgent + ⌊n/2⌋ from
+          TacticalAgent.
+        """
+        phase = self._detect_phase(board)
+        print(f"  [Orchestrator] Phase: {phase} | Move: {board.fullmove_number} | N={n}")
+
+        candidates: list[tuple[chess.Move, str]] = []
+
+        if phase == "opening":
+            print(f"  [Orchestrator] → OpeningAgent ×{n}")
+            candidates = self.opening_agent.get_move_candidates(board, n)
+
+        elif phase == "endgame":
+            print(f"  [Orchestrator] → EndgameAgent ×{n}")
+            candidates = self.endgame_agent.get_move_candidates(board, n)
+
+        else:
+            n_primary = (n + 1) // 2    # ceiling division
+            n_secondary = n // 2        # floor division
+            if _has_checks_available(board):
+                print(
+                    f"  [Orchestrator] Tactical tension → "
+                    f"TacticalAgent ×{n_primary} + PositionalAgent ×{n_secondary}"
+                )
+                candidates += self.tactical_agent.get_move_candidates(board, n_primary)
+                candidates += self.positional_agent.get_move_candidates(board, n_secondary)
+            else:
+                print(
+                    f"  [Orchestrator] Quiet middlegame → "
+                    f"PositionalAgent ×{n_primary} + TacticalAgent ×{n_secondary}"
+                )
+                candidates += self.positional_agent.get_move_candidates(board, n_primary)
+                candidates += self.tactical_agent.get_move_candidates(board, n_secondary)
+
+        return self._rank_candidates(board, candidates)
+
+    # ------------------------------------------------------------------
+    # Original single-sample entry point (kept for backward compatibility)
     # ------------------------------------------------------------------
 
     def get_move(self, board: chess.Board) -> chess.Move:
