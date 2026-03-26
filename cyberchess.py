@@ -3,8 +3,8 @@ import chess.engine
 import chess.pgn
 import google.generativeai as genai
 import os
-import random
 import datetime
+from orchestrator import ChessOrchestrator
 
 # --- CONFIGURATION ---
 # Set via environment variables, or replace the fallback strings directly.
@@ -114,7 +114,11 @@ def play_game():
     # Set Stockfish skill level (lower it initially so Gemini has a chance)
     engine.configure({"Skill Level": STOCKFISH_SKILL_LEVEL})
 
-    print("--- CYBERCHESS: Stockfish (White) vs Gemini (Black) ---")
+    # Instantiate the AI orchestrator here so agents are only created when a
+    # game is actually started (avoids unnecessary overhead on import).
+    orchestrator = ChessOrchestrator(model)
+
+    print("--- CYBERCHESS: Stockfish (White) vs Gemini Orchestrator (Black) ---")
 
     game_moves = []
 
@@ -132,9 +136,11 @@ def play_game():
             game_moves.append(result.move)
 
         else:
-            # --- GEMINI TURN ---
-            print("Gemini is thinking...")
-            move = get_gemini_move(board)
+            # --- GEMINI ORCHESTRATOR TURN ---
+            # The orchestrator detects the game phase, selects the best agent(s),
+            # and synthesises a final move when agents disagree.
+            print("Gemini Orchestrator is thinking...")
+            move = orchestrator.get_move(board)
             board.push(move)
             print(f"Gemini played: {move.uci()}")
             game_moves.append(move)
