@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About — Cyberchess Dojo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #16213e;
+      padding: 1rem 2rem;
+      border-bottom: 2px solid #0f3460;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.5rem; color: #e94560; }
+
+    nav { display: flex; gap: 1.5rem; margin-left: auto; }
+    nav a {
+      color: #a0a0b0;
+      text-decoration: none;
+      font-size: 0.9rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      transition: color 0.2s, background 0.2s;
+    }
+    nav a:hover  { color: #e0e0e0; background: #0f3460; }
+    nav a.active { color: #4ecca3; font-weight: 600; }
+
+    main { max-width: 860px; margin: 2rem auto; padding: 0 1.5rem; }
+
+    h2 {
+      font-size: 1.2rem;
+      color: #e94560;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin: 2rem 0 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid #0f3460;
+    }
+    h3 { font-size: 1rem; color: #4ecca3; margin: 1.2rem 0 0.4rem; }
+
+    p  { line-height: 1.7; color: #c8c8d8; margin-bottom: 0.75rem; }
+    ul { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+    li { line-height: 1.7; color: #c8c8d8; }
+
+    .hero {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .hero .chess-icon { font-size: 3.5rem; display: block; margin-bottom: 0.5rem; }
+    .hero h1 { font-size: 2rem; color: #e94560; margin-bottom: 0.5rem; }
+    .hero .tagline { color: #a0a0b0; font-size: 1rem; }
+
+    .badge-row {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+    .badge-row a { display: inline-block; }
+    .badge-row img { height: 20px; vertical-align: middle; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1rem;
+      font-size: 0.88rem;
+    }
+    th {
+      background: #0f3460;
+      color: #e0e0e0;
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+    }
+    td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid #0f3460;
+      color: #c8c8d8;
+    }
+    tr:last-child td { border: none; }
+
+    pre {
+      background: #0d1b2a;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      color: #a8d8a8;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 1.2rem;
+      border: 1px solid #0f3460;
+      margin-bottom: 1rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .feature-item {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .feature-item .icon { font-size: 1.6rem; margin-bottom: 0.4rem; }
+    .feature-item strong { display: block; color: #e0e0e0; margin-bottom: 0.25rem; }
+    .feature-item p { font-size: 0.83rem; margin: 0; }
+
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: #a0a0b0;
+      font-size: 0.8rem;
+      border-top: 1px solid #0f3460;
+      margin-top: 3rem;
+    }
+    footer a { color: #4ecca3; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9822; Cyberchess Dojo</h1>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/about" class="active">About</a>
+    <a href="/wiki">Wiki</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- Hero -->
+  <div class="hero">
+    <span class="chess-icon">&#9822;</span>
+    <h1>Cyberchess Dojo</h1>
+    <p class="tagline">An AI Training Arena — Stockfish (The Teacher) vs. a multi-agent LLM system (The Student)</p>
+    <div class="badge-row">
+      <a href="https://github.com/GizzZmo/Cyberchess-Dojo/actions/workflows/ci.yml">
+        <img src="https://github.com/GizzZmo/Cyberchess-Dojo/actions/workflows/ci.yml/badge.svg" alt="CI" />
+      </a>
+      <a href="https://www.python.org/">
+        <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue?logo=python&logoColor=white" alt="Python" />
+      </a>
+      <a href="https://github.com/GizzZmo/Cyberchess-Dojo/blob/main/LICENSE">
+        <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" />
+      </a>
+    </div>
+  </div>
+
+  <!-- What is it? -->
+  <h2>What is Cyberchess Dojo?</h2>
+  <p>
+    Cyberchess Dojo is an <strong>automated chess training pipeline</strong> where a classical
+    chess engine (Stockfish) and a large language model (LLM) compete against each other game
+    after game. Every game is recorded as a
+    <a href="https://en.wikipedia.org/wiki/Portable_Game_Notation" style="color:#4ecca3">PGN</a>
+    file. The long-term goal is to use this ever-growing dataset to <strong>fine-tune the LLM</strong>
+    so that it learns from Stockfish's superior play — a student being trained by a grandmaster.
+  </p>
+  <p>
+    The system is driven by a multi-agent AI orchestrator that selects the right specialist for
+    each phase of the game: opening theory, tactical calculation, positional strategy, or endgame
+    technique.
+  </p>
+
+  <!-- Key Features -->
+  <h2>Key Features</h2>
+  <div class="feature-grid">
+    <div class="feature-item">
+      <div class="icon">🤖</div>
+      <strong>Multi-Agent LLM System</strong>
+      <p>Four specialised agents (Opening, Tactical, Positional, Endgame) collaborate via an AI orchestrator.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🎓</div>
+      <strong>Stockfish Teacher</strong>
+      <p>Configurable skill level (0–20) lets you pitch the AI against anything from a beginner to a grandmaster.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">📈</div>
+      <strong>Elo Tracking</strong>
+      <p>FIDE-formula Elo ratings are calculated and persisted after every game, so progress is measurable.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🧪</div>
+      <strong>Fine-tuning Pipeline</strong>
+      <p>Convert accumulated PGN games into JSONL datasets compatible with OpenAI, Vertex AI, and HuggingFace.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🌐</div>
+      <strong>Live Web Dashboard</strong>
+      <p>Real-time board visualisation, Elo history chart, and game log — all in the browser.</p>
+    </div>
+    <div class="feature-item">
+      <div class="icon">🔌</div>
+      <strong>Multi-Provider LLM</strong>
+      <p>Swap between Google Gemini, OpenAI GPT-4o, and Anthropic Claude with a single flag.</p>
+    </div>
+  </div>
+
+  <!-- Roles table -->
+  <h2>How It Works</h2>
+  <p>Two players face each other on every board:</p>
+  <table>
+    <thead><tr><th>Role</th><th>Engine</th><th>Colour</th></tr></thead>
+    <tbody>
+      <tr><td>🎓 Teacher</td><td>Stockfish (classical engine)</td><td>White</td></tr>
+      <tr><td>🤖 Student</td><td>LLM via AI Orchestrator</td><td>Black</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The orchestrator analyses the board position, detects the game phase, and routes control to
+    the most suitable agent. When two agents propose different moves, the orchestrator makes a
+    third LLM call — acting as a grandmaster arbitrator — to synthesise a final decision.
+  </p>
+
+  <!-- Architecture diagram -->
+  <pre>
+┌──────────────────────────────────────────────────────┐
+│                   Cyberchess Arena                   │
+│                                                      │
+│  Stockfish ──(UCI)──► chess.engine                   │
+│                            │                         │
+│                     Board State (FEN)                │
+│                            │                         │
+│                    ChessOrchestrator                 │
+│                   ┌────────┴────────┐                │
+│            phase detection      agent selection      │
+│                   │                                  │
+│      ┌────────────┼────────────────┐                 │
+│  OpeningAgent  TacticalAgent  PositionalAgent        │
+│                EndgameAgent                          │
+│                   │                                  │
+│            LLM Adapter (Gemini / OpenAI / Claude)    │
+│                   │                                  │
+│            UCI move ──► board.push()                 │
+│                   │                                  │
+│        training_data.pgn  elo_history.json           │
+└──────────────────────────────────────────────────────┘
+  </pre>
+
+  <!-- Tech stack -->
+  <h2>Technology Stack</h2>
+  <table>
+    <thead><tr><th>Component</th><th>Technology</th></tr></thead>
+    <tbody>
+      <tr><td>Chess engine</td><td>Stockfish ≥ 15 (via <code>python-chess</code> UCI bridge)</td></tr>
+      <tr><td>AI agents &amp; orchestrator</td><td>Python — Google Gemini / OpenAI / Anthropic Claude</td></tr>
+      <tr><td>Web dashboard</td><td>Flask + plain HTML/CSS/JS (Canvas API for Elo chart)</td></tr>
+      <tr><td>Board visualisation</td><td><code>chess.svg</code> rendered server-side</td></tr>
+      <tr><td>Fine-tuning output</td><td>JSONL (OpenAI, Vertex AI, HuggingFace compatible)</td></tr>
+      <tr><td>CI</td><td>GitHub Actions — flake8 on Python 3.10 / 3.11 / 3.12</td></tr>
+    </tbody>
+  </table>
+
+  <!-- License -->
+  <h2>License</h2>
+  <p>
+    Cyberchess Dojo is open-source software released under the
+    <a href="https://github.com/GizzZmo/Cyberchess-Dojo/blob/main/LICENSE" style="color:#4ecca3">MIT License</a>.
+    You are free to use, modify, and distribute this project provided the copyright notice is retained.
+  </p>
+
+  <!-- Contributing -->
+  <h2>Contributing</h2>
+  <p>
+    Contributions are very welcome! Please read
+    <a href="https://github.com/GizzZmo/Cyberchess-Dojo/blob/main/CONTRIBUTING.md" style="color:#4ecca3">CONTRIBUTING.md</a>
+    before opening a pull request. The project follows
+    <a href="https://www.conventionalcommits.org/" style="color:#4ecca3">Conventional Commits</a>
+    and PEP 8 with a max line length of 120 characters.
+  </p>
+
+  <!-- Links -->
+  <h2>Links</h2>
+  <ul>
+    <li><a href="https://github.com/GizzZmo/Cyberchess-Dojo" style="color:#4ecca3">GitHub Repository</a></li>
+    <li><a href="https://github.com/GizzZmo/Cyberchess-Dojo/issues" style="color:#4ecca3">Issue Tracker</a></li>
+    <li><a href="https://github.com/GizzZmo/Cyberchess-Dojo/discussions" style="color:#4ecca3">Discussions</a></li>
+    <li><a href="https://stockfishchess.org/" style="color:#4ecca3">Stockfish Chess Engine</a></li>
+  </ul>
+
+</main>
+
+<footer>
+  <p>Cyberchess Dojo &mdash; MIT License &mdash;
+    <a href="https://github.com/GizzZmo/Cyberchess-Dojo">github.com/GizzZmo/Cyberchess-Dojo</a>
+  </p>
+</footer>
+
+</body>
+</html>

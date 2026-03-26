@@ -18,6 +18,8 @@ polls every 2 seconds.
 API endpoints
 -------------
 ``GET /``              — Renders the HTML dashboard (``templates/index.html``).
+``GET /about``         — Renders the About page (``templates/about.html``).
+``GET /wiki``          — Renders the Wiki / documentation page (``templates/wiki.html``).
 ``GET /api/state``     — Returns the current live game state as JSON.
 ``GET /api/elo``       — Returns the full Elo history as JSON.
 ``GET /api/games``     — Returns a list of completed games parsed from the PGN.
@@ -120,6 +122,18 @@ def _board_svg(fen: str, last_move_uci: str = None) -> str:
 def index():
     """Serve the main dashboard page."""
     return render_template("index.html")
+
+
+@app.route("/about")
+def about():
+    """Serve the About page."""
+    return render_template("about.html")
+
+
+@app.route("/wiki")
+def wiki():
+    """Serve the Wiki / documentation page."""
+    return render_template("wiki.html")
 
 
 @app.route("/api/state")

@@ -26,6 +26,18 @@
     header h1 { font-size: 1.5rem; color: #e94560; }
     #connection-status { color: #a0a0b0; font-size: 0.85rem; }
 
+    nav { display: flex; gap: 1.5rem; margin-left: auto; }
+    nav a {
+      color: #a0a0b0;
+      text-decoration: none;
+      font-size: 0.9rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      transition: color 0.2s, background 0.2s;
+    }
+    nav a:hover  { color: #e0e0e0; background: #0f3460; }
+    nav a.active { color: #4ecca3; font-weight: 600; }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -109,6 +121,11 @@
 
 <header>
   <h1>&#9822; Cyberchess Dojo — Dashboard</h1>
+  <nav>
+    <a href="/" class="active">Dashboard</a>
+    <a href="/about">About</a>
+    <a href="/wiki">Wiki</a>
+  </nav>
   <span id="connection-status">
     <span class="status-dot" id="status-dot"></span>Connecting…
   </span>
