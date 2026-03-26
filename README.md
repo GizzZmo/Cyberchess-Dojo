@@ -247,11 +247,21 @@ The board updates automatically every 2 seconds.  Custom host/port:
 python dashboard.py --host 0.0.0.0 --port 8080
 ```
 
+The dashboard includes three built-in pages:
+
+| Page | URL | Description |
+|------|-----|-------------|
+| **Dashboard** | `/` | Live board, Elo chart, and game log |
+| **About** | `/about` | Project overview, features, architecture, and links |
+| **Wiki** | `/wiki` | Full documentation — setup, CLI reference, agents, FAQ |
+
 **Dashboard API endpoints:**
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /` | Live dashboard HTML |
+| `GET /about` | About page — project overview and features |
+| `GET /wiki` | Wiki — full in-browser documentation |
 | `GET /api/state` | Current board state (FEN, phase, last move) |
 | `GET /api/elo` | Full Elo history JSON |
 | `GET /api/games` | Completed games parsed from `training_data.pgn` |
@@ -314,7 +324,9 @@ Cyberchess-Dojo/
 │   ├── positional_agent.py     # Positional / strategic specialist
 │   └── endgame_agent.py        # Endgame technique specialist
 ├── templates/
-│   └── index.html              # Web dashboard HTML (served by dashboard.py)
+│   ├── index.html              # Web dashboard HTML (served by dashboard.py)
+│   ├── about.html              # About page — project overview, features, architecture
+│   └── wiki.html               # Wiki — full in-browser documentation
 ├── orchestrator.py             # ChessOrchestrator — routes board states to agents
 ├── cyberchess.py               # Main arena script (loop mode, Elo, dashboard)
 ├── llm_adapter.py              # Unified LLM interface (Gemini, OpenAI, Claude)
@@ -355,6 +367,7 @@ The matrix covers **Python 3.10, 3.11, and 3.12**.
 - [x] Fine-tuning pipeline — convert `training_data.pgn` to JSONL (`finetune_pipeline.py`)
 - [x] Web dashboard — live board visualisation (`dashboard.py`)
 - [x] Support additional LLMs — GPT-4o, Claude, and any future provider (`llm_adapter.py`)
+- [x] In-browser About & Wiki pages — project overview and full documentation (`/about`, `/wiki`)
 
 ---
 
