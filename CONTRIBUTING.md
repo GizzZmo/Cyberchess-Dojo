@@ -2,6 +2,8 @@
 
 Thank you for taking the time to contribute! 🎉
 
+> 📖 For a full overview of the project architecture, configuration options, and agent design, see the **[in-browser Wiki](http://127.0.0.1:5000/wiki)** (run `python dashboard.py` first) or the sections below in this file.
+
 ## How to Contribute
 
 ### Reporting Bugs
@@ -67,3 +69,5 @@ We loosely follow [Conventional Commits](https://www.conventionalcommits.org/):
 ## Questions?
 
 Open a [Discussion](https://github.com/GizzZmo/Cyberchess-Dojo/discussions) or an Issue — we're happy to help.
+
+You can also browse the [About page](http://127.0.0.1:5000/about) and [Wiki](http://127.0.0.1:5000/wiki) in the dashboard for project background and full documentation.
