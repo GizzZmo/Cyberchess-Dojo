@@ -139,7 +139,7 @@ The matrix covers **Python 3.10, 3.11, and 3.12**.
 ## 🗺️ Roadmap
 
 - [ ] Loop mode — play `N` games in sequence automatically
-- [ ] ELO tracking — estimate Gemini's rating over time
+- [ ] Elo tracking — estimate Gemini's rating over time
 - [ ] Fine-tuning pipeline — use `training_data.pgn` to adapt the model
 - [ ] Web dashboard — live board visualisation
 - [ ] Support additional LLMs (GPT-4o, Claude, etc.)
