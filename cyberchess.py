@@ -5,6 +5,7 @@ import google.generativeai as genai
 import os
 import random
 import datetime
+import random
 from orchestrator import ChessOrchestrator
 
 # --- CONFIGURATION ---
