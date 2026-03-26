@@ -103,8 +103,8 @@ def _board_svg(fen: str, last_move_uci: str = None) -> str:
         arrows = []
         if last_move_uci:
             try:
-                m = chess.Move.from_uci(last_move_uci)
-                arrows = [chess.svg.Arrow(m.from_square, m.to_square, color="#e94560")]
+                move = chess.Move.from_uci(last_move_uci)
+                arrows = [chess.svg.Arrow(move.from_square, move.to_square, color="#e94560")]
             except Exception:
                 pass
         return chess.svg.board(board, arrows=arrows, size=400)

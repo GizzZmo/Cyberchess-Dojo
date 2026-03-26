@@ -419,6 +419,7 @@ def main(argv=None) -> None:
         save_game_data(board, args.skill, ai_label, game_number=game_idx)
 
         # Update and display Elo
+        prev_elo = elo.current_elo
         delta = elo.update(
             result=board.result(),
             opponent_skill=args.skill,
@@ -426,7 +427,6 @@ def main(argv=None) -> None:
             ai_color="black",
         )
         sign = "+" if delta >= 0 else ""
-        prev_elo = elo.current_elo - delta
         print(f"\n📈 Elo update: {prev_elo:.0f} → {elo.current_elo:.0f}  ({sign}{delta:.0f})")
 
     # ------------------------------------------------------------------ #

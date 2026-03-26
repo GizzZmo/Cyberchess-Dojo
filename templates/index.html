@@ -244,7 +244,7 @@
         '<span class="status-dot dot-ok" id="status-dot"></span>Connected — refreshing every 2 s');
 
       // --- Elo ---
-      if (eloRes && eloRes.current_elo != null) {
+      if (eloRes && eloRes.current_elo !== null) {
         setText('elo-value', Math.round(eloRes.current_elo));
         const h = eloRes.history || [];
         setText('elo-sub', h.length ? `After ${h.length} game(s)` : 'No games played yet');

@@ -192,8 +192,12 @@ class EloTracker:
         if not history:
             return f"No games played yet.  Starting Elo: {self.current_elo:.0f}"
 
-        wins = sum(1 for g in history if g["delta"] > 0)
-        draws = sum(1 for g in history if g["delta"] == 0)
+        wins   = sum(
+            1 for g in history
+            if (g["result"] == "0-1" and g["ai_color"] == "black")
+            or (g["result"] == "1-0" and g["ai_color"] == "white")
+        )
+        draws  = sum(1 for g in history if g["result"] == "1/2-1/2")
         losses = len(history) - wins - draws
 
         lines = [
