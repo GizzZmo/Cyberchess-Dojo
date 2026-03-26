@@ -6,7 +6,7 @@
 [![Issues](https://img.shields.io/github/issues/GizzZmo/Cyberchess-Dojo)](https://github.com/GizzZmo/Cyberchess-Dojo/issues)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> **An AI Training Arena** — Stockfish (The Teacher) plays chess against Gemini (The Student), generating PGN training data for future fine-tuning.
+> **An AI Training Arena** — Stockfish (The Teacher) plays chess against a Gemini-powered multi-agent system (The Student), generating PGN training data for future fine-tuning.
 
 ---
 
@@ -17,25 +17,63 @@ Cyberchess-Dojo is an **automated chess training pipeline** where a classical en
 | Role | Engine | Colour |
 |------|--------|--------|
 | 🎓 Teacher | [Stockfish](https://stockfishchess.org/) | White |
-| 🤖 Student | [Gemini 1.5 Flash](https://ai.google.dev/) | Black |
+| 🤖 Student | [Gemini 1.5 Flash](https://ai.google.dev/) via AI Orchestrator | Black |
 
 Every game is saved as a [PGN](https://en.wikipedia.org/wiki/Portable_Game_Notation) file (`training_data.pgn`). The long-term goal is to use this dataset to **fine-tune Gemini** so it learns from Stockfish's play.
 
 ```
-┌─────────────────────────────────────────┐
-│              Cyberchess Arena            │
-│                                         │
-│  Stockfish ──(UCI)──► chess.engine      │
-│                            │            │
-│                     Board State (FEN)   │
-│                            │            │
-│  Gemini ◄──(prompt)────────┘            │
-│     │                                   │
-│     └──(UCI move)──► board.push()       │
-│                            │            │
-│                     training_data.pgn   │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                   Cyberchess Arena                    │
+│                                                      │
+│  Stockfish ──(UCI)──► chess.engine                   │
+│                            │                         │
+│                     Board State (FEN)                 │
+│                            │                         │
+│                    ChessOrchestrator                  │
+│                   ┌────────┴────────┐                 │
+│            phase detection      agent selection       │
+│                   │                                   │
+│      ┌────────────┼────────────────┐                  │
+│  OpeningAgent  TacticalAgent  PositionalAgent         │
+│                            EndgameAgent               │
+│                   │                                   │
+│            synthesise (if agents disagree)            │
+│                   │                                   │
+│            UCI move ──► board.push()                  │
+│                            │                         │
+│                     training_data.pgn                 │
+└──────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🤖 AI Agents & Orchestrator
+
+### Specialised Agents (`agents/`)
+
+Each agent is a focused Gemini persona with a domain-specific prompt:
+
+| Agent | File | Expertise |
+|-------|------|-----------|
+| **OpeningAgent** | `agents/opening_agent.py` | Development, centre control, castling |
+| **TacticalAgent** | `agents/tactical_agent.py` | Checks, captures, forks, pins, skewers |
+| **PositionalAgent** | `agents/positional_agent.py` | Pawn structure, piece activity, weak squares |
+| **EndgameAgent** | `agents/endgame_agent.py` | King activity, pawn promotion, technique |
+
+All agents share a common base class (`agents/base_agent.py`) that handles retry logic, UCI move extraction via regex, and a random-move fallback.
+
+### AI Orchestrator (`orchestrator.py`)
+
+The `ChessOrchestrator` coordinates the agents using the following routing logic:
+
+| Game Phase | Condition | Agents Used |
+|------------|-----------|-------------|
+| **Opening** | Moves 1–10 | OpeningAgent only |
+| **Endgame** | ≤ 6 non-pawn pieces remain | EndgameAgent only |
+| **Tactical middlegame** | Any check available | TacticalAgent → PositionalAgent |
+| **Quiet middlegame** | No checks available | PositionalAgent → TacticalAgent |
+
+When two agents are consulted and they **disagree**, the orchestrator makes a third Gemini call — acting as a grandmaster arbitrator — to synthesise a final decision from both analyses.
 
 ---
 
@@ -112,10 +150,18 @@ Cyberchess-Dojo/
 │   │   └── feature_request.md
 │   ├── pull_request_template.md
 │   └── workflows/
-│       └── ci.yml          # Lint + syntax check on every push/PR
-├── cyberchess.py           # Main arena script
-├── requirements.txt        # Python dependencies
-├── training_data.pgn       # Generated — game records for fine-tuning
+│       └── ci.yml              # Lint + syntax check on every push/PR
+├── agents/
+│   ├── __init__.py             # Package exports
+│   ├── base_agent.py           # Shared base class (retry, UCI extraction, fallback)
+│   ├── opening_agent.py        # Opening principles specialist
+│   ├── tactical_agent.py       # Tactics specialist (checks, captures, forks)
+│   ├── positional_agent.py     # Positional / strategic specialist
+│   └── endgame_agent.py        # Endgame technique specialist
+├── orchestrator.py             # ChessOrchestrator — routes board states to agents
+├── cyberchess.py               # Main arena script
+├── requirements.txt            # Python dependencies
+├── training_data.pgn           # Generated — game records for fine-tuning
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md
@@ -138,6 +184,8 @@ The matrix covers **Python 3.10, 3.11, and 3.12**.
 
 ## 🗺️ Roadmap
 
+- [x] Gemini AI agents (Opening, Tactical, Positional, Endgame)
+- [x] AI Orchestrator with phase detection and multi-agent synthesis
 - [ ] Loop mode — play `N` games in sequence automatically
 - [ ] Elo tracking — estimate Gemini's rating over time
 - [ ] Fine-tuning pipeline — use `training_data.pgn` to adapt the model
