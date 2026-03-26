@@ -23,25 +23,25 @@ Every game is saved as a [PGN](https://en.wikipedia.org/wiki/Portable_Game_Notat
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                   Cyberchess Arena                    │
+│                   Cyberchess Arena                   │
 │                                                      │
 │  Stockfish ──(UCI)──► chess.engine                   │
 │                            │                         │
-│                     Board State (FEN)                 │
+│                     Board State (FEN)                │
 │                            │                         │
-│                    ChessOrchestrator                  │
-│                   ┌────────┴────────┐                 │
-│            phase detection      agent selection       │
-│                   │                                   │
-│      ┌────────────┼────────────────┐                  │
-│  OpeningAgent  TacticalAgent  PositionalAgent         │
-│                            EndgameAgent               │
-│                   │                                   │
-│            synthesise (if agents disagree)            │
-│                   │                                   │
-│            UCI move ──► board.push()                  │
+│                    ChessOrchestrator                 │
+│                   ┌────────┴────────┐                │
+│            phase detection      agent selection      │
+│                   │                                  │
+│      ┌────────────┼────────────────┐                 │
+│  OpeningAgent  TacticalAgent  PositionalAgent        │
+│                EndgameAgent                          │
+│                   │                                  │
+│            synthesise (if agents disagree)           │
+│                   │                                  │
+│            UCI move ──► board.push()                 │
 │                            │                         │
-│                     training_data.pgn                 │
+│                     training_data.pgn                │
 └──────────────────────────────────────────────────────┘
 ```
 
