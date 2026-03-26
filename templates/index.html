@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyberchess Dojo — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #16213e;
+      padding: 1rem 2rem;
+      border-bottom: 2px solid #0f3460;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.5rem; color: #e94560; }
+    #connection-status { color: #a0a0b0; font-size: 0.85rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+      padding: 1.25rem;
+    }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 1.2rem;
+      border: 1px solid #0f3460;
+    }
+    .card h2 {
+      font-size: 0.85rem;
+      color: #e94560;
+      margin-bottom: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    /* Live board */
+    #board-svg svg { width: 100% !important; height: auto !important; }
+    #move-info { margin-top: 0.5rem; font-size: 0.82rem; color: #a0a0b0; text-align: center; min-height: 1.2em; }
+
+    /* Elo */
+    .elo-value { font-size: 2.8rem; font-weight: 700; color: #4ecca3; text-align: center; line-height: 1.1; padding: 0.4rem 0; }
+    .elo-sub   { text-align: center; color: #a0a0b0; font-size: 0.82rem; margin-bottom: 0.75rem; }
+    #elo-canvas { display: block; width: 100%; height: 110px; }
+
+    /* Stats table */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.3rem 0;
+      border-bottom: 1px solid #0f3460;
+      font-size: 0.88rem;
+    }
+    .stat-row:last-child { border: none; }
+    .stat-label { color: #a0a0b0; }
+
+    /* Game log */
+    #game-log { max-height: 240px; overflow-y: auto; font-size: 0.8rem; font-family: monospace; }
+    .log-entry { padding: 0.2rem 0; border-bottom: 1px solid #0f3460; }
+    .log-entry:last-child { border: none; }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 3px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    .badge-win  { background: #1a4a2e; color: #4ecca3; }
+    .badge-loss { background: #4a1a1a; color: #e94560; }
+    .badge-draw { background: #3a3a1a; color: #f0c040; }
+    .badge-live { background: #e94560; color: #fff; animation: blink 1s infinite; }
+
+    /* Status dot */
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #a0a0b0;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .dot-ok   { background: #4ecca3; }
+    .dot-live { background: #e94560; animation: blink 1s infinite; }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    /* Placeholder text */
+    .placeholder { color: #a0a0b0; text-align: center; padding: 2rem 0; font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9822; Cyberchess Dojo — Dashboard</h1>
+  <span id="connection-status">
+    <span class="status-dot" id="status-dot"></span>Connecting…
+  </span>
+</header>
+
+<div class="grid">
+
+  <!-- Live board -->
+  <div class="card">
+    <h2>Live Board <span id="live-badge"></span></h2>
+    <div id="board-svg"><p class="placeholder">Waiting for game data…</p></div>
+    <div id="move-info"></div>
+  </div>
+
+  <!-- Elo -->
+  <div class="card">
+    <h2>Elo Rating</h2>
+    <div class="elo-value" id="elo-value">—</div>
+    <div class="elo-sub"   id="elo-sub">No games played yet</div>
+    <canvas id="elo-canvas" aria-label="Elo history chart"></canvas>
+  </div>
+
+  <!-- Game stats -->
+  <div class="card">
+    <h2>Current Game</h2>
+    <div id="game-stats">
+      <div class="stat-row"><span class="stat-label">Status</span>     <span id="stat-status">Idle</span></div>
+      <div class="stat-row"><span class="stat-label">Game #</span>      <span id="stat-game">—</span></div>
+      <div class="stat-row"><span class="stat-label">Full move</span>   <span id="stat-move">—</span></div>
+      <div class="stat-row"><span class="stat-label">Phase</span>       <span id="stat-phase">—</span></div>
+      <div class="stat-row"><span class="stat-label">Last move</span>   <span id="stat-last-move">—</span></div>
+      <div class="stat-row"><span class="stat-label">White (Stockfish)</span> <span id="stat-sf">—</span></div>
+      <div class="stat-row"><span class="stat-label">Black (AI)</span>  <span id="stat-ai">—</span></div>
+    </div>
+  </div>
+
+  <!-- Recent games log -->
+  <div class="card">
+    <h2>Recent Games</h2>
+    <div id="game-log"><p class="placeholder">No completed games yet.</p></div>
+  </div>
+
+</div>
+
+<script>
+  // -----------------------------------------------------------------------
+  // Elo sparkline chart
+  // -----------------------------------------------------------------------
+  function drawEloChart(history) {
+    const canvas = document.getElementById('elo-canvas');
+    const ctx    = canvas.getContext('2d');
+
+    // Resize to CSS dimensions
+    canvas.width  = canvas.offsetWidth  || 300;
+    canvas.height = canvas.offsetHeight || 110;
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    if (!history || history.length < 2) {
+      ctx.fillStyle = '#a0a0b0';
+      ctx.font      = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Not enough data', W / 2, H / 2);
+      return;
+    }
+
+    const elos = history.map(g => g.elo_after);
+    const yMin = Math.min(...elos) - 60;
+    const yMax = Math.max(...elos) + 60;
+    const px   = i => 10 + (i / (elos.length - 1)) * (W - 20);
+    const py   = v => H - 8 - ((v - yMin) / (yMax - yMin)) * (H - 18);
+
+    // Grid lines
+    ctx.strokeStyle = '#0f3460';
+    ctx.lineWidth   = 1;
+    [0.25, 0.5, 0.75].forEach(t => {
+      const y = H - 8 - t * (H - 18);
+      ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(W - 10, y); ctx.stroke();
+    });
+
+    // Line
+    ctx.beginPath();
+    elos.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
+    ctx.strokeStyle = '#4ecca3';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+
+    // Dots
+    elos.forEach((v, i) => {
+      ctx.beginPath();
+      ctx.arc(px(i), py(v), 3, 0, 2 * Math.PI);
+      ctx.fillStyle = '#4ecca3';
+      ctx.fill();
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Helpers
+  // -----------------------------------------------------------------------
+  function resultBadge(result, aiColor) {
+    if (result === '1/2-1/2') return '<span class="badge badge-draw">Draw</span>';
+    const aiWon = (result === '0-1' && aiColor === 'black') || (result === '1-0' && aiColor === 'white');
+    return aiWon
+      ? '<span class="badge badge-win">Win</span>'
+      : '<span class="badge badge-loss">Loss</span>';
+  }
+
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
+  function setHTML(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = val;
+  }
+
+  // -----------------------------------------------------------------------
+  // Polling loop
+  // -----------------------------------------------------------------------
+  async function poll() {
+    try {
+      const [stateRes, eloRes, gamesRes] = await Promise.all([
+        fetch('/api/state').then(r => r.json()),
+        fetch('/api/elo').then(r => r.json()),
+        fetch('/api/games').then(r => r.json()),
+      ]);
+
+      // Connection OK
+      const dot = document.getElementById('status-dot');
+      if (dot) { dot.className = 'status-dot dot-ok'; }
+      setHTML('connection-status',
+        '<span class="status-dot dot-ok" id="status-dot"></span>Connected — refreshing every 2 s');
+
+      // --- Elo ---
+      if (eloRes && eloRes.current_elo !== null) {
+        setText('elo-value', Math.round(eloRes.current_elo));
+        const h = eloRes.history || [];
+        setText('elo-sub', h.length ? `After ${h.length} game(s)` : 'No games played yet');
+        drawEloChart(h);
+      }
+
+      // --- Board & state ---
+      if (stateRes) {
+        setHTML('board-svg', stateRes.svg || '<p class="placeholder">No board data.</p>');
+        setHTML('live-badge', stateRes.active ? '<span class="badge badge-live">LIVE</span>' : '');
+        setText('move-info', stateRes.active
+          ? `Move ${stateRes.move_number} — ${stateRes.turn} to move`
+          : stateRes.result ? `Game over — ${stateRes.result}` : '');
+
+        setText('stat-status',    stateRes.active ? '🟢 Playing' : '⚪ Idle');
+        setText('stat-game',      stateRes.game_number ?? '—');
+        setText('stat-move',      stateRes.move_number  ?? '—');
+        setText('stat-phase',     stateRes.phase         ?? '—');
+        setText('stat-last-move', stateRes.last_move     ?? '—');
+        setText('stat-sf',  stateRes.stockfish_skill != null ? `Skill ${stateRes.stockfish_skill}` : '—');
+        setText('stat-ai',  stateRes.ai_model ?? '—');
+      }
+
+      // --- Recent games ---
+      if (gamesRes && gamesRes.games && gamesRes.games.length) {
+        const games = gamesRes.games.slice(-20).reverse();
+        setHTML('game-log', games.map(g =>
+          `<div class="log-entry">` +
+          `${resultBadge(g.result, 'black')} ` +
+          `Game ${g.round || '?'} — ${g.result} — ${g.moves} plies — ` +
+          `vs Stockfish Skill ${g.stockfish_skill ?? '?'}` +
+          `</div>`
+        ).join(''));
+      }
+
+    } catch (err) {
+      const dot = document.getElementById('status-dot');
+      if (dot) { dot.className = 'status-dot'; dot.style.background = '#e94560'; }
+    }
+  }
+
+  poll();
+  setInterval(poll, 2000);
+  window.addEventListener('resize', () => {
+    // Re-draw Elo chart on resize
+    fetch('/api/elo').then(r => r.json()).then(d => drawEloChart(d.history || [])).catch(() => {});
+  });
+</script>
+
+</body>
+</html>
