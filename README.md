@@ -73,7 +73,13 @@ The `ChessOrchestrator` coordinates the agents using the following routing logic
 | **Tactical middlegame** | Any check available | TacticalAgent → PositionalAgent |
 | **Quiet middlegame** | No checks available | PositionalAgent → TacticalAgent |
 
-When two agents disagree, the orchestrator makes a third call — acting as a grandmaster arbitrator — to synthesise a final decision.
+Additional selection safeguards now applied by the orchestrator:
+
+- **Opening fast-path**: in opening phase, the orchestrator first checks Polyglot/embedded theory and immediately plays the top legal theory move when available.
+- **Tactical safety filter**: after ranking candidates, obviously riskier options can be replaced by a materially safer alternative from the same candidate set.
+- **Endgame conversion filter**: in endgames, candidate moves are re-scored for king activity and passed-pawn conversion potential before final selection.
+
+When candidate analyses disagree, the orchestrator still makes a final grandmaster-style ranking call to synthesise the strongest move.
 
 ---
 
@@ -85,9 +91,11 @@ A full game loop looks like this:
 2. **Per-game** — Stockfish (White) and the LLM orchestrator (Black) alternate moves until the game is over.
 3. **Per-move (Black)** —
    - The `ChessOrchestrator` detects the game phase (opening / middlegame / endgame).
-   - It selects the appropriate specialist agent(s) and requests `N` independent move samples (best-of-N).
+   - In the opening, it first attempts a direct theory move from Polyglot/embedded opening knowledge.
+   - Otherwise, it selects the appropriate specialist agent(s) and requests `N` independent move samples (best-of-N).
    - If all samples agree, that move is played immediately.
    - If samples differ, a ranking call picks the strongest candidate.
+   - Tactical/endgame post-filters can replace clearly inferior choices with safer or more convertible alternatives.
    - Before each move the arena checks `pause_flag.json`; if a pause was requested from the dashboard it waits until the flag clears.
 4. **Post-game** — The completed game is appended to `training_data.pgn`; the AI's Elo is updated in `elo_history.json`.
 5. **Fine-tuning** — After collecting games, `finetune_pipeline.py` converts the PGN into a JSONL dataset ready for supervised fine-tuning.
@@ -212,6 +220,27 @@ python cyberchess.py --games 10 --skill 10
 ```
 
 Each game is appended to `training_data.pgn` with a `Round` header for easy filtering.
+
+---
+
+## 🧭 Adaptive Training
+
+When exactly one side is AI (`stockfish-ai` or `ai-stockfish`), `adaptive_system.py` adjusts the next game's challenge plan from recent results:
+
+- **Recovery regime** (recent score low): slightly reduces Stockfish strength/time and increases best-of-N.
+- **Challenge regime** (recent score high): slightly increases Stockfish strength/time and increases best-of-N.
+- **Stable regime**: keeps the base settings.
+
+To reduce oscillation near thresholds, the adaptive manager now uses:
+
+- **Exponential smoothing** of recent performance.
+- **Hysteresis thresholds** so regime switches require clearer evidence.
+
+The generated plan is printed each game as:
+
+```
+🧭 Adaptive plan: regime=... | recent_score=... | skill=... | time=...s | best_of_n=...
+```
 
 ---
 
