@@ -17,6 +17,15 @@ import chess
 from collections import Counter
 from agents import OpeningAgent, TacticalAgent, PositionalAgent, EndgameAgent
 
+_PIECE_VALUES = {
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+    chess.KING: 100,
+}
+
 
 # ---------------------------------------------------------------------------
 # Phase-detection thresholds
@@ -65,6 +74,66 @@ def _extract_move(text: str) -> str:
         tokens = lines[-1].split()
         return tokens[-1] if tokens else text
     return text
+
+
+def _move_tactical_risk(board: chess.Board, move: chess.Move) -> int:
+    """
+    Return a coarse tactical-risk score for *move* (lower is safer).
+
+    Penalises landing high-value pieces on attacked/undefended squares, while
+    rewarding forcing moves and profitable captures.
+    """
+    moving_piece = board.piece_at(move.from_square)
+    captured_piece = board.piece_at(move.to_square)
+    capture_value = _PIECE_VALUES.get(captured_piece.piece_type, 0) if captured_piece else 0
+    moving_value = _PIECE_VALUES.get(moving_piece.piece_type, 0) if moving_piece else 0
+
+    risk = 0
+    if board.gives_check(move):
+        risk -= 1
+    if capture_value > 0:
+        risk -= min(capture_value, 5)
+
+    board.push(move)
+    try:
+        mover = not board.turn
+        opponent = board.turn
+        attacked = board.is_attacked_by(opponent, move.to_square)
+        defended = board.is_attacked_by(mover, move.to_square)
+        if attacked and not defended:
+            risk += moving_value
+        elif attacked and defended and moving_value >= 5 and capture_value == 0:
+            risk += 1
+    finally:
+        board.pop()
+
+    return risk
+
+
+def _apply_tactical_safety_filter(
+    board: chess.Board,
+    chosen_move: chess.Move,
+    candidates: list[chess.Move],
+) -> chess.Move:
+    """
+    If the chosen move is notably riskier than available alternatives, replace it
+    with the safest candidate.
+    """
+    if len(candidates) <= 1:
+        return chosen_move
+
+    chosen_risk = _move_tactical_risk(board, chosen_move)
+    scored = [(move, _move_tactical_risk(board, move)) for move in candidates]
+    best_move, best_risk = min(scored, key=lambda item: item[1])
+
+    # Only override when there is a meaningful tactical safety gap.
+    if chosen_risk >= best_risk + 3:
+        print(
+            f"  [Orchestrator] Safety filter replaced {chosen_move.uci()} "
+            f"(risk={chosen_risk}) with {best_move.uci()} (risk={best_risk})"
+        )
+        return best_move
+    return chosen_move
 
 
 # ---------------------------------------------------------------------------
@@ -222,16 +291,25 @@ Task:
                 move_str = _extract_move(raw)
                 move = chess.Move.from_uci(move_str)
                 if move in board.legal_moves:
-                    print(f"  [Orchestrator] Best-of-N ranking selected: {move.uci()}")
-                    return move
+                    safe_move = _apply_tactical_safety_filter(
+                        board,
+                        move,
+                        [candidate_move for candidate_move, _ in unique_candidates],
+                    )
+                    if safe_move != move:
+                        print(f"  [Orchestrator] Best-of-N ranking selected: {move.uci()} (overridden)")
+                    else:
+                        print(f"  [Orchestrator] Best-of-N ranking selected: {move.uci()}")
+                    return safe_move
                 prompt += f"\n\nERROR: '{move_str}' is not legal. Choose from: {', '.join(legal_moves)}"
             except Exception as e:
                 print(f"  [Orchestrator] Ranking error on attempt {attempt + 1}: {e}")
 
         # Fallback: most frequently suggested candidate.
         best_move = Counter(move for move, _ in candidates).most_common(1)[0][0]
+        safe_fallback = _apply_tactical_safety_filter(board, best_move, [move for move, _ in candidates])
         print(f"  [Orchestrator] Ranking failed — using most frequent candidate: {best_move.uci()}")
-        return best_move
+        return safe_fallback
 
     # ------------------------------------------------------------------
     # Main entry point (best-of-N)
