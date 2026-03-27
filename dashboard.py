@@ -47,6 +47,8 @@ _SETTINGS_FILE = os.environ.get("SETTINGS_FILE", "settings.json")
 _SETTINGS_DEFAULTS: dict = {
     "stockfish_skill": 5,
     "stockfish_time": 0.1,
+    "time_control_mode": "rapid",
+    "matchup": "stockfish-ai",
     "llm_provider": "gemini",
     "llm_model": "",
     "best_of_n": 3,

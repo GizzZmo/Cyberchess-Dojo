@@ -30,6 +30,7 @@ import datetime
 import json
 import os
 import random
+import sys
 import time
 
 import chess
@@ -58,6 +59,20 @@ _PGN_FILE = "training_data.pgn"
 _STATE_FILE = "game_state.json"    # live board state for the web dashboard
 _PAUSE_FILE = "pause_flag.json"    # written by dashboard to pause/resume a game
 _SETTINGS_FILE = "settings.json"   # persisted settings (written by dashboard)
+
+# Time controls available for training sessions.
+TIME_CONTROLS: dict[str, float] = {
+    "classic": 0.3,
+    "rapid": 0.1,
+    "lightning": 0.03,
+}
+
+MATCHUPS: dict[str, tuple[str, str]] = {
+    "stockfish-ai": ("stockfish", "ai"),
+    "stockfish-stockfish": ("stockfish", "stockfish"),
+    "ai-ai": ("ai", "ai"),
+    "ai-stockfish": ("ai", "stockfish"),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +195,20 @@ def _validate_config(stockfish_path: str, api_key: str, provider: str) -> None:
         )
 
 
+def _resolve_matchup(matchup: str) -> tuple[str, str]:
+    """Return (white_type, black_type) for the configured matchup."""
+    return MATCHUPS[matchup]
+
+
+def _ai_perspective_color(white_type: str, black_type: str) -> str | None:
+    """Return the single AI side color when exactly one side is AI, else None."""
+    if white_type == "ai" and black_type == "stockfish":
+        return "white"
+    if white_type == "stockfish" and black_type == "ai":
+        return "black"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Single-game runner
 # ---------------------------------------------------------------------------
@@ -193,7 +222,10 @@ def play_game(
     game_number: int = 1,
     live_dashboard: bool = False,
     ai_model_name: str = "AI",
-) -> chess.Board:
+    white_type: str = "stockfish",
+    black_type: str = "ai",
+    time_control_mode: str = "rapid",
+) -> tuple[chess.Board, str, str]:
     """
     Play a single game of Stockfish (White) vs. the AI orchestrator (Black).
 
@@ -225,14 +257,16 @@ def play_game(
 
     engine.configure({"Skill Level": stockfish_skill})
 
-    orchestrator = ChessOrchestrator(adapter)
+    orchestrator = ChessOrchestrator(adapter) if (white_type == "ai" or black_type == "ai") else None
     board = chess.Board()
+    white_label = f"Stockfish Level {stockfish_skill}" if white_type == "stockfish" else ai_model_name
+    black_label = f"Stockfish Level {stockfish_skill}" if black_type == "stockfish" else ai_model_name
 
     # Maintain a SAN move list for the dashboard move-list panel.
     san_moves: list[str] = []
 
     print(f"\n{'=' * 60}")
-    print(f"  GAME {game_number}: Stockfish Skill {stockfish_skill} (White) vs {ai_model_name} (Black)")
+    print(f"  GAME {game_number}: {white_label} (White) vs {black_label} (Black)")
     print(f"{'=' * 60}")
 
     while not board.is_game_over():
@@ -261,11 +295,15 @@ def play_game(
                 "phase": phase,
                 "last_move": board.peek().uci() if board.move_stack else None,
                 "stockfish_skill": stockfish_skill,
+                "time_control_mode": time_control_mode,
                 "ai_model": ai_model_name,
+                "white_player": white_label,
+                "black_player": black_label,
                 "san_moves": san_moves,
             })
 
-        if board.turn == chess.WHITE:
+        current_side = white_type if board.turn == chess.WHITE else black_type
+        if current_side == "stockfish":
             print("Stockfish is thinking...")
             result = engine.play(board, chess.engine.Limit(time=stockfish_time))
             san = board.san(result.move)
@@ -275,7 +313,7 @@ def play_game(
 
         else:
             print("AI Orchestrator is thinking...")
-            move = orchestrator.get_best_move(board, n=best_of_n)
+            move = orchestrator.get_best_move(board, n=best_of_n)  # type: ignore[union-attr]
             san = board.san(move)
             board.push(move)
             san_moves.append(san)
@@ -296,11 +334,14 @@ def play_game(
             "result": board.result(),
             "move_number": board.fullmove_number,
             "stockfish_skill": stockfish_skill,
+            "time_control_mode": time_control_mode,
             "ai_model": ai_model_name,
+            "white_player": white_label,
+            "black_player": black_label,
             "san_moves": san_moves,
         })
 
-    return board
+    return board, white_label, black_label
 
 
 # ---------------------------------------------------------------------------
@@ -309,8 +350,8 @@ def play_game(
 
 def save_game_data(
     board: chess.Board,
-    stockfish_skill: int,
-    ai_model_name: str,
+    white_label: str,
+    black_label: str,
     game_number: int = None,
 ) -> None:
     """
@@ -318,14 +359,14 @@ def save_game_data(
 
     Args:
         board:           The completed board (contains the full move list).
-        stockfish_skill: Stockfish skill level used during the game.
-        ai_model_name:   Name / label of the AI player.
+        white_label:     Label/name for White player.
+        black_label:     Label/name for Black player.
         game_number:     Optional sequential game number for the Round header.
     """
     pgn_game = chess.pgn.Game.from_board(board)
     pgn_game.headers["Event"] = "Cyberchess Dojo"
-    pgn_game.headers["White"] = f"Stockfish Level {stockfish_skill}"
-    pgn_game.headers["Black"] = ai_model_name
+    pgn_game.headers["White"] = white_label
+    pgn_game.headers["Black"] = black_label
     now = datetime.datetime.now()
     pgn_game.headers["Date"] = now.strftime("%Y.%m.%d")
     pgn_game.headers["Time"] = now.strftime("%H:%M:%S")
@@ -368,6 +409,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--time", type=float, default=STOCKFISH_TIME_LIMIT, metavar="SECS",
         help="Seconds Stockfish is allowed per move",
     )
+    sf_group.add_argument(
+        "--time-control", default=None, choices=list(TIME_CONTROLS.keys()),
+        help="Time-control preset: classic, rapid, or lightning",
+    )
+    sf_group.add_argument(
+        "--matchup", default="stockfish-ai", choices=list(MATCHUPS.keys()),
+        help="Player types by color: stockfish-ai, stockfish-stockfish, ai-ai, ai-stockfish",
+    )
 
     # LLM / sampling
     llm_group = parser.add_argument_group("LLM provider")
@@ -404,7 +453,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> None:
     parser = _build_arg_parser()
-    args = parser.parse_args(argv)
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    args = parser.parse_args(argv_list)
 
     # Resolve Stockfish path and API key
     stockfish_path = args.stockfish
@@ -412,21 +462,53 @@ def main(argv=None) -> None:
     if args.llm == "gemini" and not api_key:
         api_key = GOOGLE_API_KEY
 
-    _validate_config(stockfish_path, api_key, args.llm)
+    white_type, black_type = _resolve_matchup(args.matchup)
+    ai_color = _ai_perspective_color(white_type, black_type)
+    needs_ai = white_type == "ai" or black_type == "ai"
+
+    if not stockfish_path or stockfish_path.strip() == "YOUR_STOCKFISH_PATH_HERE":
+        raise ValueError(
+            "STOCKFISH_PATH is not set.  Set the STOCKFISH_PATH environment variable "
+            "or pass --stockfish on the command line."
+        )
+    if needs_ai:
+        _validate_config(stockfish_path, api_key, args.llm)
 
     # Create the LLM adapter
-    from llm_adapter import create_adapter
-    adapter = create_adapter(provider=args.llm, model_name=args.model, api_key=api_key)
-    ai_label = f"{args.llm.capitalize()} ({adapter.model_name})"
+    adapter = None
+    ai_label = "AI"
+    if needs_ai:
+        from llm_adapter import create_adapter
+        adapter = create_adapter(provider=args.llm, model_name=args.model, api_key=api_key)
+        ai_label = f"{args.llm.capitalize()} ({adapter.model_name})"
 
-    print(f"LLM provider : {ai_label}")
-    print(f"Stockfish    : {stockfish_path}  (skill={args.skill}, time={args.time}s)")
+    print(f"LLM provider : {ai_label if needs_ai else 'N/A (Stockfish-only matchup)'}")
+    # Resolve optional settings from dashboard persistence.
+    settings = {}
+    try:
+        with open(_SETTINGS_FILE) as f:
+            settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        settings = {}
+
+    selected_mode = (args.time_control or settings.get("time_control_mode") or "rapid").lower()
+    if selected_mode not in TIME_CONTROLS:
+        selected_mode = "rapid"
+
+    # CLI --time has priority; otherwise use selected mode preset.
+    explicit_time_flag = "--time" in argv_list
+    effective_time = args.time if explicit_time_flag else TIME_CONTROLS[selected_mode]
+
+    print(f"Stockfish    : {stockfish_path}  (skill={args.skill}, time={effective_time}s, mode={selected_mode})")
     print(f"Best-of-N    : {args.best_of_n}")
     print(f"Games to play: {args.games}")
+    print(f"Matchup      : {args.matchup}  (White={white_type}, Black={black_type})")
 
     # Elo tracking — load existing history and show current rating
     from elo_tracker import EloTracker
+    from adaptive_system import AdaptiveTrainingManager
     elo = EloTracker()
+    adaptive = AdaptiveTrainingManager()
     if elo.games_played > 0:
         print(f"\n{elo.report()}\n")
 
@@ -445,29 +527,58 @@ def main(argv=None) -> None:
             print(f"  GAME {game_idx} of {args.games}")
             print(f"{'#' * 60}")
 
-        board = play_game(
+        if ai_color:
+            plan = adaptive.plan_next_game(
+                base_skill=args.skill,
+                base_time=effective_time,
+                base_best_of_n=args.best_of_n,
+                elo_history=elo.history,
+            )
+        else:
+            plan = {
+                "stockfish_skill": args.skill,
+                "stockfish_time": effective_time,
+                "best_of_n": args.best_of_n,
+                "recent_score": 0.5,
+                "regime": "fixed",
+            }
+
+        print(
+            f"🧭 Adaptive plan: regime={plan['regime']} | "
+            f"recent_score={plan['recent_score']:.2f} | "
+            f"skill={plan['stockfish_skill']} | time={plan['stockfish_time']}s | "
+            f"best_of_n={plan['best_of_n']}"
+        )
+
+        board, white_label, black_label = play_game(
             adapter=adapter,
             stockfish_path=stockfish_path,
-            stockfish_skill=args.skill,
-            stockfish_time=args.time,
-            best_of_n=args.best_of_n,
+            stockfish_skill=plan["stockfish_skill"],
+            stockfish_time=plan["stockfish_time"],
+            best_of_n=plan["best_of_n"],
             game_number=game_idx,
             live_dashboard=args.dashboard,
             ai_model_name=ai_label,
+            white_type=white_type,
+            black_type=black_type,
+            time_control_mode=selected_mode,
         )
 
-        save_game_data(board, args.skill, ai_label, game_number=game_idx)
+        save_game_data(board, white_label, black_label, game_number=game_idx)
 
-        # Update and display Elo
-        prev_elo = elo.current_elo
-        delta = elo.update(
-            result=board.result(),
-            opponent_skill=args.skill,
-            game_number=game_idx,
-            ai_color="black",
-        )
-        sign = "+" if delta >= 0 else ""
-        print(f"\n📈 Elo update: {prev_elo:.0f} → {elo.current_elo:.0f}  ({sign}{delta:.0f})")
+        # Update and display Elo only when exactly one AI plays against Stockfish.
+        if ai_color:
+            prev_elo = elo.current_elo
+            delta = elo.update(
+                result=board.result(),
+                opponent_skill=plan["stockfish_skill"],
+                game_number=game_idx,
+                ai_color=ai_color,
+            )
+            sign = "+" if delta >= 0 else ""
+            print(f"\n📈 Elo update: {prev_elo:.0f} → {elo.current_elo:.0f}  ({sign}{delta:.0f})")
+        else:
+            print("\n📈 Elo update skipped for this matchup (no single AI vs Stockfish perspective).")
 
     # ------------------------------------------------------------------ #
     #  Final summary                                                      #

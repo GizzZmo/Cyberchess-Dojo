@@ -74,7 +74,52 @@ class BaseChessAgent:
         retained so that sample frequency can act as a confidence signal during
         downstream ranking.
         """
-        return [self.get_move(board) for _ in range(n)]
+        n = max(1, int(n))
+        legal_moves = [m.uci() for m in board.legal_moves]
+        legal_set = set(legal_moves)
+        base_prompt = self._build_prompt(board, legal_moves)
+        return [
+            self._sample_move_from_prompt(
+                board=board,
+                base_prompt=base_prompt,
+                legal_moves=legal_moves,
+                legal_set=legal_set,
+            )
+            for _ in range(n)
+        ]
+
+    def _sample_move_from_prompt(
+        self,
+        board: chess.Board,
+        base_prompt: str,
+        legal_moves: list[str],
+        legal_set: set[str],
+        retries: int = 3,
+    ) -> tuple[chess.Move, str]:
+        """Sample one legal move from a prepared prompt/context."""
+        prompt = base_prompt
+        for attempt in range(retries):
+            try:
+                response = self.model.generate_content(prompt)
+                raw = response.text.strip()
+                move_str = self._extract_move(raw).lower()
+                if move_str in legal_set:
+                    move = chess.Move.from_uci(move_str)
+                    if move in board.legal_moves:
+                        return move, raw
+
+                print(f"  [{self.name}] Illegal move '{move_str}' (attempt {attempt + 1}). Retrying...")
+                prompt += (
+                    f"\n\nERROR: '{move_str}' is NOT a legal move. "
+                    f"You MUST choose from: {', '.join(legal_moves)}"
+                )
+            except Exception as e:
+                print(f"  [{self.name}] Parse error on attempt {attempt + 1}: {e}")
+                prompt += "\n\nERROR: Invalid format. End your response with the UCI move on its own line (e.g. e7e5)."
+
+        fallback = random.choice(list(board.legal_moves))
+        print(f"  [{self.name}] All retries exhausted — playing random move: {fallback.uci()}")
+        return fallback, f"fallback: random move ({fallback.uci()})"
 
     def get_move(self, board: chess.Board, retries: int = 3) -> tuple[chess.Move, str]:
         """
@@ -85,28 +130,10 @@ class BaseChessAgent:
         every retry fails.
         """
         legal_moves = [m.uci() for m in board.legal_moves]
-        prompt = self._build_prompt(board, legal_moves)
-
-        for attempt in range(retries):
-            try:
-                response = self.model.generate_content(prompt)
-                raw = response.text.strip()
-                move_str = self._extract_move(raw)
-                move = chess.Move.from_uci(move_str)
-
-                if move in board.legal_moves:
-                    return move, raw
-
-                print(f"  [{self.name}] Illegal move '{move_str}' (attempt {attempt + 1}). Retrying...")
-                prompt += (
-                    f"\n\nERROR: '{move_str}' is NOT a legal move. "
-                    f"You MUST choose from: {', '.join(legal_moves)}"
-                )
-
-            except Exception as e:
-                print(f"  [{self.name}] Parse error on attempt {attempt + 1}: {e}")
-                prompt += "\n\nERROR: Invalid format. End your response with the UCI move on its own line (e.g. e7e5)."
-
-        fallback = random.choice(list(board.legal_moves))
-        print(f"  [{self.name}] All retries exhausted — playing random move: {fallback.uci()}")
-        return fallback, f"fallback: random move ({fallback.uci()})"
+        return self._sample_move_from_prompt(
+            board=board,
+            base_prompt=self._build_prompt(board, legal_moves),
+            legal_moves=legal_moves,
+            legal_set=set(legal_moves),
+            retries=retries,
+        )

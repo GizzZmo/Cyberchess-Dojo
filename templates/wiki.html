@@ -395,8 +395,15 @@ python cyberchess.py --llm claude --model claude-3-haiku-20240307</code></pre>
       </tbody>
     </table>
     <p>
-      When two agents propose different moves, the orchestrator issues a third LLM call —
-      acting as a grandmaster arbitrator — to synthesise a final decision.
+      Additional move-selection safeguards are applied by the orchestrator:
+    </p>
+    <ul>
+      <li><strong>Opening fast-path:</strong> in opening phase, the orchestrator checks Polyglot/embedded theory and immediately plays the top legal theory move when available.</li>
+      <li><strong>Tactical safety filter:</strong> after candidate ranking, clearly riskier choices can be replaced with a materially safer candidate from the same sample set.</li>
+      <li><strong>Endgame conversion filter:</strong> endgame candidates are re-scored for king activity and passed-pawn conversion potential before final selection.</li>
+    </ul>
+    <p>
+      When candidates disagree, the orchestrator still performs a final grandmaster-style ranking call to synthesise the strongest move.
     </p>
 
     <h3 id="llm-adapter">LLM Adapter</h3>
@@ -405,6 +412,22 @@ python cyberchess.py --llm claude --model claude-3-haiku-20240307</code></pre>
       the provider at instantiation time; all agents and the orchestrator call only
       <code>adapter.generate(prompt)</code>, making the underlying model completely
       interchangeable.
+    </p>
+
+    <!-- ------------------------------------------------------------------ -->
+    <h2 id="adaptive">Adaptive Training</h2>
+    <p>
+      When exactly one side is AI, <code>adaptive_system.py</code> adjusts next-game settings
+      from recent results.
+    </p>
+    <ul>
+      <li><strong>Recovery regime:</strong> slightly lowers Stockfish strength/time and increases best-of-N.</li>
+      <li><strong>Challenge regime:</strong> slightly increases Stockfish strength/time and increases best-of-N.</li>
+      <li><strong>Stable regime:</strong> keeps baseline settings.</li>
+    </ul>
+    <p>
+      To reduce oscillation near boundaries, adaptive planning uses exponential smoothing
+      and hysteresis thresholds. Each game prints the generated plan in the terminal.
     </p>
 
     <!-- ------------------------------------------------------------------ -->

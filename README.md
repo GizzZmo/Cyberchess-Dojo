@@ -73,7 +73,13 @@ The `ChessOrchestrator` coordinates the agents using the following routing logic
 | **Tactical middlegame** | Any check available | TacticalAgent → PositionalAgent |
 | **Quiet middlegame** | No checks available | PositionalAgent → TacticalAgent |
 
-When two agents disagree, the orchestrator makes a third call — acting as a grandmaster arbitrator — to synthesise a final decision.
+Additional selection safeguards now applied by the orchestrator:
+
+- **Opening fast-path**: in opening phase, the orchestrator first checks Polyglot/embedded theory and immediately plays the top legal theory move when available.
+- **Tactical safety filter**: after ranking candidates, obviously riskier options can be replaced by a materially safer alternative from the same candidate set.
+- **Endgame conversion filter**: in endgames, candidate moves are re-scored for king activity and passed-pawn conversion potential before final selection.
+
+When candidate analyses disagree, the orchestrator still makes a final grandmaster-style ranking call to synthesise the strongest move.
 
 ---
 
@@ -85,9 +91,11 @@ A full game loop looks like this:
 2. **Per-game** — Stockfish (White) and the LLM orchestrator (Black) alternate moves until the game is over.
 3. **Per-move (Black)** —
    - The `ChessOrchestrator` detects the game phase (opening / middlegame / endgame).
-   - It selects the appropriate specialist agent(s) and requests `N` independent move samples (best-of-N).
+   - In the opening, it first attempts a direct theory move from Polyglot/embedded opening knowledge.
+   - Otherwise, it selects the appropriate specialist agent(s) and requests `N` independent move samples (best-of-N).
    - If all samples agree, that move is played immediately.
    - If samples differ, a ranking call picks the strongest candidate.
+   - Tactical/endgame post-filters can replace clearly inferior choices with safer or more convertible alternatives.
    - Before each move the arena checks `pause_flag.json`; if a pause was requested from the dashboard it waits until the flag clears.
 4. **Post-game** — The completed game is appended to `training_data.pgn`; the AI's Elo is updated in `elo_history.json`.
 5. **Fine-tuning** — After collecting games, `finetune_pipeline.py` converts the PGN into a JSONL dataset ready for supervised fine-tuning.
@@ -177,6 +185,8 @@ All settings can be passed as command-line arguments or set via environment vari
 ```
 usage: cyberchess.py [-h] [--games N] [--dashboard]
                      [--stockfish PATH] [--skill 0-20] [--time SECS]
+                     [--time-control {classic,rapid,lightning}]
+                     [--matchup {stockfish-ai,stockfish-stockfish,ai-ai,ai-stockfish}]
                      [--llm {gemini,openai,claude}] [--model MODEL_NAME]
                      [--api-key KEY] [--best-of-n N]
 ```
@@ -186,6 +196,8 @@ usage: cyberchess.py [-h] [--games N] [--dashboard]
 | `--games N` | `1` | Number of games to play in sequence (loop mode) |
 | `--skill 0-20` | `5` | Stockfish strength 0 (weakest) – 20 (Grandmaster) |
 | `--time SECS` | `0.1` | Seconds Stockfish spends per move |
+| `--time-control` | `rapid` | Time-control preset: `classic`, `rapid`, or `lightning` |
+| `--matchup` | `stockfish-ai` | Player combination: `stockfish-ai`, `stockfish-stockfish`, `ai-ai`, or `ai-stockfish` |
 | `--llm` | `gemini` | LLM provider: `gemini`, `openai`, or `claude` |
 | `--model` | *(provider default)* | Model name override (e.g. `gpt-4o`) |
 | `--api-key` | *(env var)* | API key (overrides environment variable) |
@@ -208,6 +220,27 @@ python cyberchess.py --games 10 --skill 10
 ```
 
 Each game is appended to `training_data.pgn` with a `Round` header for easy filtering.
+
+---
+
+## 🧭 Adaptive Training
+
+When exactly one side is AI (`stockfish-ai` or `ai-stockfish`), `adaptive_system.py` adjusts the next game's challenge plan from recent results:
+
+- **Recovery regime** (recent score low): slightly reduces Stockfish strength/time and increases best-of-N.
+- **Challenge regime** (recent score high): slightly increases Stockfish strength/time and increases best-of-N.
+- **Stable regime**: keeps the base settings.
+
+To reduce oscillation near thresholds, the adaptive manager now uses:
+
+- **Exponential smoothing** of recent performance.
+- **Hysteresis thresholds** so regime switches require clearer evidence.
+
+The generated plan is printed each game as:
+
+```
+🧭 Adaptive plan: regime=... | recent_score=... | skill=... | time=...s | best_of_n=...
+```
 
 ---
 
@@ -298,6 +331,15 @@ python dashboard.py --host 0.0.0.0 --port 8080
 
 ### Dashboard features
 
+#### 🧭 Welcome Menu (Time Controls)
+On first dashboard load, a welcome menu lets you select a chess pace:
+
+- **Classic** — 0.30s per Stockfish move
+- **Rapid** — 0.10s per Stockfish move
+- **Lightning** — 0.03s per Stockfish move
+
+The choice is stored in `settings.json` as `time_control_mode` and is used by the next arena run unless you explicitly pass `--time`.
+
 #### ⏸ Pause / Resume
 Click the **Pause** button on the Live Board card to freeze the arena between moves.  The arena polls `pause_flag.json` before every move and waits until the flag clears.  Click **Resume** to continue.
 
@@ -317,6 +359,7 @@ Click the **⚙ Settings** button in the navigation bar to open the settings mod
 |---------|-------------|
 | Stockfish skill | Skill level 0–20 (slider) |
 | Time per move | Seconds Stockfish is allowed per move |
+| Time control mode | Classic, Rapid, or Lightning preset |
 | LLM provider | Gemini, OpenAI, or Anthropic Claude |
 | Model name | Model identifier override |
 | Best-of-N | Number of LLM samples per move |
@@ -461,6 +504,7 @@ These files are created automatically during a run and are **not** committed to 
 | `game_state.json` | `cyberchess.py --dashboard` | Live board state (FEN, move list, pause flag) polled by the web dashboard |
 | `pause_flag.json` | Dashboard `POST /api/pause` | Pause/resume signal written by the dashboard, read by `cyberchess.py` |
 | `settings.json` | Dashboard `POST /api/settings` | Persisted UI settings: skill level, LLM provider, API keys, etc. |
+| `adaptive_progress.json` | `adaptive_system.py` | Adaptive curriculum snapshots used to tune challenge over time |
 | `finetune_data.jsonl` | `finetune_pipeline.py` | Fine-tuning dataset generated from `training_data.pgn` |
 
 ---
@@ -539,4 +583,3 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
-

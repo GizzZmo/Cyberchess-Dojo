@@ -311,12 +311,87 @@
     }
     .toast.show { opacity: 1; }
     .toast.error { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 16px rgba(233,69,96,0.2); }
+
+    /* ── Welcome menu ────────────────────────────────────────────────── */
+    .welcome-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(2px);
+    }
+    .welcome-overlay.open { display: flex; }
+    .welcome-panel {
+      background: #0b1020;
+      border: 1px solid var(--neon2);
+      border-radius: 6px;
+      box-shadow: 0 0 40px rgba(0, 240, 255, 0.18);
+      width: min(520px, 94vw);
+      padding: 1.2rem;
+    }
+    .welcome-panel h3 {
+      color: var(--neon2);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 0.8rem;
+    }
+    .welcome-sub { color: var(--dim); font-size: 0.8rem; margin-bottom: 0.9rem; }
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.6rem;
+      margin-bottom: 0.9rem;
+    }
+    .mode-btn {
+      border: 1px solid var(--bg-border);
+      border-radius: 4px;
+      background: #060c18;
+      color: var(--text);
+      padding: 0.6rem 0.5rem;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.78rem;
+      text-align: center;
+    }
+    .mode-btn.active {
+      border-color: var(--neon);
+      color: var(--neon);
+      box-shadow: 0 0 10px rgba(78, 204, 163, 0.3);
+    }
+    .mode-meta { color: var(--dim); font-size: 0.75rem; }
   </style>
 </head>
 <body>
 
 <!-- Matrix rain -->
 <canvas id="matrix-bg"></canvas>
+
+<!-- Welcome menu -->
+<div class="welcome-overlay" id="welcome-menu">
+  <div class="welcome-panel">
+    <h3>Welcome Menu</h3>
+    <div class="welcome-sub">Choose your training time control for Stockfish move time.</div>
+    <div class="mode-grid">
+      <button class="mode-btn" data-mode="classic" onclick="selectWelcomeMode('classic')">
+        Classic<br><span class="mode-meta">0.30s / move</span>
+      </button>
+      <button class="mode-btn" data-mode="rapid" onclick="selectWelcomeMode('rapid')">
+        Rapid<br><span class="mode-meta">0.10s / move</span>
+      </button>
+      <button class="mode-btn" data-mode="lightning" onclick="selectWelcomeMode('lightning')">
+        Lightning<br><span class="mode-meta">0.03s / move</span>
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:0;">
+      <button class="btn btn-danger" onclick="closeWelcomeMenu()">Later</button>
+      <button class="btn-primary" onclick="saveWelcomeMode()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- Settings modal -->
 <div class="modal-overlay" id="settings-modal">
@@ -332,6 +407,23 @@
     <div class="field-row">
       <label for="s-time">Time per move (seconds)</label>
       <input type="number" id="s-time" min="0.01" max="60" step="0.05" value="0.1" />
+    </div>
+    <div class="field-row">
+      <label for="s-time-mode">Time control mode</label>
+      <select id="s-time-mode">
+        <option value="classic">Classic</option>
+        <option value="rapid">Rapid</option>
+        <option value="lightning">Lightning</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="s-matchup">Matchup</label>
+      <select id="s-matchup">
+        <option value="stockfish-ai">Stockfish vs AI</option>
+        <option value="stockfish-stockfish">Stockfish vs Stockfish</option>
+        <option value="ai-ai">AI vs AI</option>
+        <option value="ai-stockfish">AI vs Stockfish</option>
+      </select>
     </div>
 
     <h4>LLM Provider</h4>
@@ -429,8 +521,8 @@
       <div class="stat-row"><span class="stat-label">Full move</span>   <span id="stat-move">—</span></div>
       <div class="stat-row"><span class="stat-label">Phase</span>       <span id="stat-phase">—</span></div>
       <div class="stat-row"><span class="stat-label">Last move</span>   <span id="stat-last-move">—</span></div>
-      <div class="stat-row"><span class="stat-label">White (Stockfish)</span> <span id="stat-sf">—</span></div>
-      <div class="stat-row"><span class="stat-label">Black (AI)</span>  <span id="stat-ai">—</span></div>
+      <div class="stat-row"><span class="stat-label">White</span> <span id="stat-white">—</span></div>
+      <div class="stat-row"><span class="stat-label">Black</span> <span id="stat-black">—</span></div>
     </div>
   </div>
 
@@ -581,6 +673,42 @@ function renderMoveList(sanMoves) {
 
 // ─── Pause toggle ─────────────────────────────────────────────────────────────
 let _paused = false;
+let selectedWelcomeMode = 'rapid';
+
+function openWelcomeMenu() {
+  document.getElementById('welcome-menu').classList.add('open');
+}
+
+function closeWelcomeMenu() {
+  document.getElementById('welcome-menu').classList.remove('open');
+}
+
+function selectWelcomeMode(mode) {
+  selectedWelcomeMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+  });
+}
+
+async function saveWelcomeMode() {
+  const payload = { time_control_mode: selectedWelcomeMode };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('Welcome mode saved ✓');
+      closeWelcomeMenu();
+    } else {
+      showToast('Failed to save mode: ' + data.error, true);
+    }
+  } catch {
+    showToast('Could not save welcome mode', true);
+  }
+}
 
 async function togglePause() {
   try {
@@ -630,12 +758,15 @@ function openSettings() {
     document.getElementById('s-skill').value     = d.stockfish_skill ?? 5;
     document.getElementById('s-skill-val').textContent = d.stockfish_skill ?? 5;
     document.getElementById('s-time').value      = d.stockfish_time ?? 0.1;
+    document.getElementById('s-time-mode').value = d.time_control_mode ?? 'rapid';
+    document.getElementById('s-matchup').value   = d.matchup ?? 'stockfish-ai';
     document.getElementById('s-provider').value  = d.llm_provider   ?? 'gemini';
     document.getElementById('s-model').value     = d.llm_model       ?? '';
     document.getElementById('s-bon').value       = d.best_of_n       ?? 3;
     document.getElementById('s-gemini-key').value    = d.gemini_api_key    ?? '';
     document.getElementById('s-openai-key').value    = d.openai_api_key    ?? '';
     document.getElementById('s-anthropic-key').value = d.anthropic_api_key ?? '';
+    selectWelcomeMode(d.time_control_mode ?? 'rapid');
     document.getElementById('settings-modal').classList.add('open');
   }).catch(err => {
     console.error('Failed to load settings:', err);
@@ -651,6 +782,8 @@ async function saveSettings() {
   const payload = {
     stockfish_skill:  parseInt(document.getElementById('s-skill').value,  10),
     stockfish_time:   parseFloat(document.getElementById('s-time').value),
+    time_control_mode: document.getElementById('s-time-mode').value,
+    matchup:          document.getElementById('s-matchup').value,
     llm_provider:     document.getElementById('s-provider').value,
     llm_model:        document.getElementById('s-model').value.trim(),
     best_of_n:        parseInt(document.getElementById('s-bon').value, 10),
@@ -718,8 +851,8 @@ async function poll() {
       setText('stat-move',      stateRes.move_number  ?? '—');
       setText('stat-phase',     stateRes.phase         ?? '—');
       setText('stat-last-move', stateRes.last_move     ?? '—');
-      setText('stat-sf',  stateRes.stockfish_skill != null ? `Skill ${stateRes.stockfish_skill}` : '—');
-      setText('stat-ai',  stateRes.ai_model ?? '—');
+      setText('stat-white', stateRes.white_player ?? '—');
+      setText('stat-black', stateRes.black_player ?? '—');
 
       renderMoveList(stateRes.san_moves || []);
     }
@@ -731,7 +864,7 @@ async function poll() {
         `<div class="log-entry">` +
         `${resultBadge(g.result, 'black')} ` +
         `Game ${g.round || '?'} — ${g.result} — ${g.moves} plies — ` +
-        `vs Stockfish Skill ${g.stockfish_skill ?? '?'}` +
+        `${g.white} vs ${g.black}` +
         `</div>`
       ).join(''));
     }
@@ -743,6 +876,16 @@ async function poll() {
 }
 
 poll();
+fetch('/api/settings')
+  .then(r => r.json())
+  .then(d => {
+    selectWelcomeMode(d.time_control_mode ?? 'rapid');
+    if (!window.localStorage.getItem('welcomeModeSeen')) {
+      openWelcomeMenu();
+      window.localStorage.setItem('welcomeModeSeen', '1');
+    }
+  })
+  .catch(() => {});
 setInterval(poll, 2000);
 window.addEventListener('resize', () => {
   fetch('/api/elo').then(r => r.json()).then(d => drawEloChart(d.history || [])).catch(() => {});

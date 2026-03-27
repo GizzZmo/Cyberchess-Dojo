@@ -44,6 +44,9 @@ Legal moves available: {', '.join(legal_moves)}
 Instructions:
 - Evaluate which side has better king activity and pawn structure.
 - Identify any passed pawns and assess promotion races.
+- Prioritise creating/protecting your passed pawns and blockading enemy passers.
+- Prefer king-centralising moves when no concrete tactic is stronger.
+- In rook endings, keep rooks behind passed pawns (yours and your opponent's).
 - Choose the move that best applies correct endgame technique.
 - Briefly explain your endgame reasoning, citing a principle or known technique (2-3 sentences).
 - On the very last line of your response, write ONLY the UCI move (e.g. e7e5).
