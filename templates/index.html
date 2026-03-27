@@ -664,7 +664,7 @@ function renderMoveList(sanMoves) {
 
 // ─── Pause toggle ─────────────────────────────────────────────────────────────
 let _paused = false;
-let _welcomeMode = 'rapid';
+let selectedWelcomeMode = 'rapid';
 
 function openWelcomeMenu() {
   document.getElementById('welcome-menu').classList.add('open');
@@ -675,14 +675,14 @@ function closeWelcomeMenu() {
 }
 
 function selectWelcomeMode(mode) {
-  _welcomeMode = mode;
+  selectedWelcomeMode = mode;
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
   });
 }
 
 async function saveWelcomeMode() {
-  const payload = { time_control_mode: _welcomeMode };
+  const payload = { time_control_mode: selectedWelcomeMode };
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
@@ -872,9 +872,9 @@ fetch('/api/settings')
   .then(r => r.json())
   .then(d => {
     selectWelcomeMode(d.time_control_mode ?? 'rapid');
-    if (!window.localStorage.getItem('welcome_mode_seen')) {
+    if (!window.localStorage.getItem('welcomeModeSeen')) {
       openWelcomeMenu();
-      window.localStorage.setItem('welcome_mode_seen', '1');
+      window.localStorage.setItem('welcomeModeSeen', '1');
     }
   })
   .catch(() => {});

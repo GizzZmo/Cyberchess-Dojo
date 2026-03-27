@@ -419,8 +419,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> None:
     parser = _build_arg_parser()
-    resolved_argv = list(argv) if argv is not None else sys.argv[1:]
-    args = parser.parse_args(resolved_argv)
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    args = parser.parse_args(argv_list)
 
     # Resolve Stockfish path and API key
     stockfish_path = args.stockfish
@@ -449,7 +449,7 @@ def main(argv=None) -> None:
         selected_mode = "rapid"
 
     # CLI --time has priority; otherwise use selected mode preset.
-    explicit_time_flag = "--time" in resolved_argv
+    explicit_time_flag = "--time" in argv_list
     effective_time = args.time if explicit_time_flag else TIME_CONTROLS[selected_mode]
 
     print(f"Stockfish    : {stockfish_path}  (skill={args.skill}, time={effective_time}s, mode={selected_mode})")
