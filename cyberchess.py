@@ -30,6 +30,7 @@ import datetime
 import json
 import os
 import random
+import sys
 import time
 
 import chess
@@ -200,6 +201,7 @@ def play_game(
     game_number: int = 1,
     live_dashboard: bool = False,
     ai_model_name: str = "AI",
+    time_control_mode: str = "rapid",
 ) -> chess.Board:
     """
     Play a single game of Stockfish (White) vs. the AI orchestrator (Black).
@@ -268,6 +270,7 @@ def play_game(
                 "phase": phase,
                 "last_move": board.peek().uci() if board.move_stack else None,
                 "stockfish_skill": stockfish_skill,
+                "time_control_mode": time_control_mode,
                 "ai_model": ai_model_name,
                 "san_moves": san_moves,
             })
@@ -303,6 +306,7 @@ def play_game(
             "result": board.result(),
             "move_number": board.fullmove_number,
             "stockfish_skill": stockfish_skill,
+            "time_control_mode": time_control_mode,
             "ai_model": ai_model_name,
             "san_moves": san_moves,
         })
@@ -375,6 +379,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--time", type=float, default=STOCKFISH_TIME_LIMIT, metavar="SECS",
         help="Seconds Stockfish is allowed per move",
     )
+    sf_group.add_argument(
+        "--time-control", default=None, choices=list(TIME_CONTROLS.keys()),
+        help="Time-control preset: classic, rapid, or lightning",
+    )
 
     # LLM / sampling
     llm_group = parser.add_argument_group("LLM provider")
@@ -411,7 +419,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> None:
     parser = _build_arg_parser()
-    args = parser.parse_args(argv)
+    resolved_argv = list(argv) if argv is not None else sys.argv[1:]
+    args = parser.parse_args(resolved_argv)
 
     # Resolve Stockfish path and API key
     stockfish_path = args.stockfish
@@ -435,12 +444,13 @@ def main(argv=None) -> None:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         settings = {}
 
-    selected_mode = (settings.get("time_control_mode") or "rapid").lower()
+    selected_mode = (args.time_control or settings.get("time_control_mode") or "rapid").lower()
     if selected_mode not in TIME_CONTROLS:
         selected_mode = "rapid"
 
-    # CLI --time still has highest priority. Otherwise use selected mode preset.
-    effective_time = args.time if "--time" in (argv or []) else TIME_CONTROLS[selected_mode]
+    # CLI --time has priority; otherwise use selected mode preset.
+    explicit_time_flag = "--time" in resolved_argv
+    effective_time = args.time if explicit_time_flag else TIME_CONTROLS[selected_mode]
 
     print(f"Stockfish    : {stockfish_path}  (skill={args.skill}, time={effective_time}s, mode={selected_mode})")
     print(f"Best-of-N    : {args.best_of_n}")
@@ -492,6 +502,7 @@ def main(argv=None) -> None:
             game_number=game_idx,
             live_dashboard=args.dashboard,
             ai_model_name=ai_label,
+            time_control_mode=selected_mode,
         )
 
         save_game_data(board, plan["stockfish_skill"], ai_label, game_number=game_idx)

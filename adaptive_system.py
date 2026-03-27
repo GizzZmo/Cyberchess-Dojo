@@ -107,4 +107,3 @@ class AdaptiveTrainingManager:
         self._data["history"].append(plan)
         self.save()
         return plan
-

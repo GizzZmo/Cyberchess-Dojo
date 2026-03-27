@@ -177,6 +177,7 @@ All settings can be passed as command-line arguments or set via environment vari
 ```
 usage: cyberchess.py [-h] [--games N] [--dashboard]
                      [--stockfish PATH] [--skill 0-20] [--time SECS]
+                     [--time-control {classic,rapid,lightning}]
                      [--llm {gemini,openai,claude}] [--model MODEL_NAME]
                      [--api-key KEY] [--best-of-n N]
 ```
@@ -186,6 +187,7 @@ usage: cyberchess.py [-h] [--games N] [--dashboard]
 | `--games N` | `1` | Number of games to play in sequence (loop mode) |
 | `--skill 0-20` | `5` | Stockfish strength 0 (weakest) – 20 (Grandmaster) |
 | `--time SECS` | `0.1` | Seconds Stockfish spends per move |
+| `--time-control` | `rapid` | Time-control preset: `classic`, `rapid`, or `lightning` |
 | `--llm` | `gemini` | LLM provider: `gemini`, `openai`, or `claude` |
 | `--model` | *(provider default)* | Model name override (e.g. `gpt-4o`) |
 | `--api-key` | *(env var)* | API key (overrides environment variable) |
@@ -298,6 +300,15 @@ python dashboard.py --host 0.0.0.0 --port 8080
 
 ### Dashboard features
 
+#### 🧭 Welcome Menu (Time Controls)
+On first dashboard load, a welcome menu lets you select a chess pace:
+
+- **Classic** — 0.30s per Stockfish move
+- **Rapid** — 0.10s per Stockfish move
+- **Lightning** — 0.03s per Stockfish move
+
+The choice is stored in `settings.json` as `time_control_mode` and is used by the next arena run unless you explicitly pass `--time`.
+
 #### ⏸ Pause / Resume
 Click the **Pause** button on the Live Board card to freeze the arena between moves.  The arena polls `pause_flag.json` before every move and waits until the flag clears.  Click **Resume** to continue.
 
@@ -317,6 +328,7 @@ Click the **⚙ Settings** button in the navigation bar to open the settings mod
 |---------|-------------|
 | Stockfish skill | Skill level 0–20 (slider) |
 | Time per move | Seconds Stockfish is allowed per move |
+| Time control mode | Classic, Rapid, or Lightning preset |
 | LLM provider | Gemini, OpenAI, or Anthropic Claude |
 | Model name | Model identifier override |
 | Best-of-N | Number of LLM samples per move |
@@ -461,6 +473,7 @@ These files are created automatically during a run and are **not** committed to 
 | `game_state.json` | `cyberchess.py --dashboard` | Live board state (FEN, move list, pause flag) polled by the web dashboard |
 | `pause_flag.json` | Dashboard `POST /api/pause` | Pause/resume signal written by the dashboard, read by `cyberchess.py` |
 | `settings.json` | Dashboard `POST /api/settings` | Persisted UI settings: skill level, LLM provider, API keys, etc. |
+| `adaptive_progress.json` | `adaptive_system.py` | Adaptive curriculum snapshots used to tune challenge over time |
 | `finetune_data.jsonl` | `finetune_pipeline.py` | Fine-tuning dataset generated from `training_data.pgn` |
 
 ---
@@ -539,4 +552,3 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
-
