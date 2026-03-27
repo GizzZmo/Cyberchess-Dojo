@@ -416,6 +416,15 @@
         <option value="lightning">Lightning</option>
       </select>
     </div>
+    <div class="field-row">
+      <label for="s-matchup">Matchup</label>
+      <select id="s-matchup">
+        <option value="stockfish-ai">Stockfish vs AI</option>
+        <option value="stockfish-stockfish">Stockfish vs Stockfish</option>
+        <option value="ai-ai">AI vs AI</option>
+        <option value="ai-stockfish">AI vs Stockfish</option>
+      </select>
+    </div>
 
     <h4>LLM Provider</h4>
     <div class="field-row">
@@ -512,8 +521,8 @@
       <div class="stat-row"><span class="stat-label">Full move</span>   <span id="stat-move">—</span></div>
       <div class="stat-row"><span class="stat-label">Phase</span>       <span id="stat-phase">—</span></div>
       <div class="stat-row"><span class="stat-label">Last move</span>   <span id="stat-last-move">—</span></div>
-      <div class="stat-row"><span class="stat-label">White (Stockfish)</span> <span id="stat-sf">—</span></div>
-      <div class="stat-row"><span class="stat-label">Black (AI)</span>  <span id="stat-ai">—</span></div>
+      <div class="stat-row"><span class="stat-label">White</span> <span id="stat-white">—</span></div>
+      <div class="stat-row"><span class="stat-label">Black</span> <span id="stat-black">—</span></div>
     </div>
   </div>
 
@@ -750,6 +759,7 @@ function openSettings() {
     document.getElementById('s-skill-val').textContent = d.stockfish_skill ?? 5;
     document.getElementById('s-time').value      = d.stockfish_time ?? 0.1;
     document.getElementById('s-time-mode').value = d.time_control_mode ?? 'rapid';
+    document.getElementById('s-matchup').value   = d.matchup ?? 'stockfish-ai';
     document.getElementById('s-provider').value  = d.llm_provider   ?? 'gemini';
     document.getElementById('s-model').value     = d.llm_model       ?? '';
     document.getElementById('s-bon').value       = d.best_of_n       ?? 3;
@@ -773,6 +783,7 @@ async function saveSettings() {
     stockfish_skill:  parseInt(document.getElementById('s-skill').value,  10),
     stockfish_time:   parseFloat(document.getElementById('s-time').value),
     time_control_mode: document.getElementById('s-time-mode').value,
+    matchup:          document.getElementById('s-matchup').value,
     llm_provider:     document.getElementById('s-provider').value,
     llm_model:        document.getElementById('s-model').value.trim(),
     best_of_n:        parseInt(document.getElementById('s-bon').value, 10),
@@ -840,11 +851,8 @@ async function poll() {
       setText('stat-move',      stateRes.move_number  ?? '—');
       setText('stat-phase',     stateRes.phase         ?? '—');
       setText('stat-last-move', stateRes.last_move     ?? '—');
-      setText('stat-sf',  stateRes.stockfish_skill != null ? `Skill ${stateRes.stockfish_skill}` : '—');
-      setText(
-        'stat-ai',
-        (stateRes.ai_model ?? '—') + (stateRes.time_control_mode ? ` (${stateRes.time_control_mode})` : '')
-      );
+      setText('stat-white', stateRes.white_player ?? '—');
+      setText('stat-black', stateRes.black_player ?? '—');
 
       renderMoveList(stateRes.san_moves || []);
     }
@@ -856,7 +864,7 @@ async function poll() {
         `<div class="log-entry">` +
         `${resultBadge(g.result, 'black')} ` +
         `Game ${g.round || '?'} — ${g.result} — ${g.moves} plies — ` +
-        `vs Stockfish Skill ${g.stockfish_skill ?? '?'}` +
+        `${g.white} vs ${g.black}` +
         `</div>`
       ).join(''));
     }

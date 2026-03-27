@@ -178,6 +178,7 @@ All settings can be passed as command-line arguments or set via environment vari
 usage: cyberchess.py [-h] [--games N] [--dashboard]
                      [--stockfish PATH] [--skill 0-20] [--time SECS]
                      [--time-control {classic,rapid,lightning}]
+                     [--matchup {stockfish-ai,stockfish-stockfish,ai-ai,ai-stockfish}]
                      [--llm {gemini,openai,claude}] [--model MODEL_NAME]
                      [--api-key KEY] [--best-of-n N]
 ```
@@ -188,6 +189,7 @@ usage: cyberchess.py [-h] [--games N] [--dashboard]
 | `--skill 0-20` | `5` | Stockfish strength 0 (weakest) – 20 (Grandmaster) |
 | `--time SECS` | `0.1` | Seconds Stockfish spends per move |
 | `--time-control` | `rapid` | Time-control preset: `classic`, `rapid`, or `lightning` |
+| `--matchup` | `stockfish-ai` | Player combination: `stockfish-ai`, `stockfish-stockfish`, `ai-ai`, or `ai-stockfish` |
 | `--llm` | `gemini` | LLM provider: `gemini`, `openai`, or `claude` |
 | `--model` | *(provider default)* | Model name override (e.g. `gpt-4o`) |
 | `--api-key` | *(env var)* | API key (overrides environment variable) |
