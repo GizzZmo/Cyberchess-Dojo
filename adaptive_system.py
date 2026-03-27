@@ -79,19 +79,28 @@ class AdaptiveTrainingManager:
           - recent_score
           - regime
         """
-        recent = self._recent_score(elo_history)
+        recent_raw = self._recent_score(elo_history)
+        previous_plan = self._data.get("history", [])[-1] if self._data.get("history") else {}
+        previous_recent = float(previous_plan.get("recent_score", recent_raw))
+        # Exponential smoothing to reduce oscillation in regime switching.
+        recent = (0.7 * recent_raw) + (0.3 * previous_recent)
 
         skill = int(base_skill)
         stockfish_time = float(base_time)
         best_of_n = int(base_best_of_n)
         regime = "stable"
+        previous_regime = str(previous_plan.get("regime", "stable"))
 
-        if recent < 0.35:
+        # Hysteresis thresholds: avoid rapid flips around boundaries.
+        low_threshold = 0.33 if previous_regime == "recovery" else 0.30
+        high_threshold = 0.67 if previous_regime == "challenge" else 0.70
+
+        if recent < low_threshold:
             regime = "recovery"
             skill = max(0, skill - 1)
             stockfish_time = max(0.01, stockfish_time * 0.8)
             best_of_n = min(10, best_of_n + 1)
-        elif recent > 0.65:
+        elif recent > high_threshold:
             regime = "challenge"
             skill = min(20, skill + 1)
             stockfish_time = min(60.0, stockfish_time * 1.2)
@@ -101,6 +110,7 @@ class AdaptiveTrainingManager:
             "stockfish_skill": skill,
             "stockfish_time": round(stockfish_time, 3),
             "best_of_n": best_of_n,
+            "recent_score_raw": round(recent_raw, 3),
             "recent_score": round(recent, 3),
             "regime": regime,
         }
