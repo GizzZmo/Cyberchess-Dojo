@@ -77,6 +77,22 @@ When two agents disagree, the orchestrator makes a third call — acting as a gr
 
 ---
 
+## 🔄 How It Works
+
+A full game loop looks like this:
+
+1. **Startup** — `cyberchess.py` validates config, creates the LLM adapter, and loads Elo history.
+2. **Per-game** — Stockfish (White) and the LLM orchestrator (Black) alternate moves until the game is over.
+3. **Per-move (Black)** —
+   - The `ChessOrchestrator` detects the game phase (opening / middlegame / endgame).
+   - It selects the appropriate specialist agent(s) and requests `N` independent move samples (best-of-N).
+   - If all samples agree, that move is played immediately.
+   - If samples differ, a ranking call picks the strongest candidate.
+4. **Post-game** — The completed game is appended to `training_data.pgn`; the AI's Elo is updated in `elo_history.json`.
+5. **Fine-tuning** — After collecting games, `finetune_pipeline.py` converts the PGN into a JSONL dataset ready for supervised fine-tuning.
+
+---
+
 ## 📋 Prerequisites
 
 | Requirement | Version | Notes |
@@ -84,6 +100,24 @@ When two agents disagree, the orchestrator makes a third call — acting as a gr
 | Python | ≥ 3.10 | |
 | [Stockfish](https://stockfishchess.org/download/) | ≥ 15 | Must be installed separately |
 | LLM API key | — | See [LLM Provider Setup](#-llm-provider-setup) |
+
+---
+
+## 🔑 Environment Variables
+
+All sensitive configuration is read from environment variables (never hard-coded).
+
+| Variable | Provider | Required | Description |
+|----------|----------|----------|-------------|
+| `STOCKFISH_PATH` | — | ✅ | Full path to the Stockfish binary |
+| `GOOGLE_API_KEY` | Gemini | ✅ (Gemini only) | Google AI Studio API key |
+| `OPENAI_API_KEY` | OpenAI | ✅ (OpenAI only) | OpenAI platform API key |
+| `ANTHROPIC_API_KEY` | Claude | ✅ (Claude only) | Anthropic API key |
+| `PGN_FILE` | Dashboard | — | Override the default `training_data.pgn` path |
+| `ELO_FILE` | Dashboard | — | Override the default `elo_history.json` path |
+| `STATE_FILE` | Dashboard | — | Override the default `game_state.json` path |
+
+CLI flags (`--api-key`, `--stockfish`) override the corresponding environment variables.
 
 ---
 
@@ -112,7 +146,7 @@ export GOOGLE_API_KEY="your-gemini-api-key"
 
 **Windows (PowerShell)**
 ```powershell
-$env:STOCKFISH_PATH = "C:\Users\Jon\Downloads\stockfish\stockfish-windows-x86-64.exe"
+$env:STOCKFISH_PATH = "C:/Users/Jon/Downloads/stockfish/stockfish-windows-x86-64.exe"
 $env:GOOGLE_API_KEY = "your-gemini-api-key"
 ```
 
@@ -358,6 +392,32 @@ The matrix covers **Python 3.10, 3.11, and 3.12**.
 
 ---
 
+## 📖 Opening Book
+
+The `opening_book.py` module enriches the `OpeningAgent` with structured chess knowledge:
+
+- **ECO database** — ~150 key positions mapped to ECO codes (A00–E99) and opening names.
+- **Embedded theory** — Main-line book moves for Black in ~50 key positions (no external file required).
+- **Polyglot binary book** — If a `.bin` file is available, the agent reads moves from it first (set `POLYGLOT_PATH` env var or pass the path to `get_book_moves`). Falls back to the embedded theory if the file is absent.
+- **Historical game references** — ~100 curated famous games organised by opening family, included in the agent's prompt as illustrative examples.
+
+The `TacticalAgent`, `PositionalAgent`, and `EndgameAgent` similarly draw on `FAMOUS_GAMES` references for tactical masterpieces, positional classics, and endgame studies respectively.
+
+---
+
+## 📂 Generated Files
+
+These files are created automatically during a run and are **not** committed to the repository:
+
+| File | Created by | Description |
+|------|-----------|-------------|
+| `training_data.pgn` | `cyberchess.py` | Accumulates completed games in PGN format for fine-tuning |
+| `elo_history.json` | `elo_tracker.py` | Persists the AI's Elo rating and per-game history across runs |
+| `game_state.json` | `cyberchess.py --dashboard` | Live board state polled by the web dashboard every 2 seconds |
+| `finetune_data.jsonl` | `finetune_pipeline.py` | Fine-tuning dataset generated from `training_data.pgn` |
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] Gemini AI agents (Opening, Tactical, Positional, Endgame)
@@ -368,6 +428,49 @@ The matrix covers **Python 3.10, 3.11, and 3.12**.
 - [x] Web dashboard — live board visualisation (`dashboard.py`)
 - [x] Support additional LLMs — GPT-4o, Claude, and any future provider (`llm_adapter.py`)
 - [x] In-browser About & Wiki pages — project overview and full documentation (`/about`, `/wiki`)
+
+---
+
+## 🔧 Troubleshooting
+
+**Stockfish not found**
+```
+ValueError: STOCKFISH_PATH is not set.
+```
+Set the environment variable pointing to your Stockfish binary, or pass `--stockfish PATH`:
+```bash
+# Linux / macOS — installed via package manager
+export STOCKFISH_PATH="$(which stockfish)"
+
+# Windows — downloaded manually
+$env:STOCKFISH_PATH = "C:\path\to\stockfish.exe"
+```
+
+**Missing API key**
+```
+ValueError: GOOGLE_API_KEY is not set.
+```
+Export the correct key for your chosen provider (see [Environment Variables](#-environment-variables)).
+
+**`ImportError` for openai / anthropic**
+The `openai` and `anthropic` packages are optional.  Install them only if you need those providers:
+```bash
+pip install openai       # for --llm openai
+pip install anthropic    # for --llm claude
+```
+
+**LLM keeps playing illegal moves**
+- Try a stronger model (`--model gpt-4o`, `--model gemini-1.5-pro`).
+- Increase best-of-N sampling (`--best-of-n 5`) so the ranking call has more candidates to choose from.
+- The agents retry up to 3 times per move and fall back to a random legal move if all retries fail.
+
+**Dashboard shows a stale board**
+- Make sure `cyberchess.py` was started with `--dashboard` so it writes `game_state.json`.
+- The dashboard polls every 2 seconds; a slight delay is normal.
+- Check that both processes are running in the same working directory so they use the same `game_state.json`.
+
+**Elo resets to 1200 after a run**
+`elo_history.json` is written to the current working directory.  Run both `cyberchess.py` and `finetune_pipeline.py` from the same directory, or set `ELO_FILE` to an absolute path.
 
 ---
 

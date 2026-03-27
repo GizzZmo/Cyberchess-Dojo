@@ -1,12 +1,25 @@
+"""
+Base chess agent for Cyberchess-Dojo.
+
+All specialist agents (Opening, Tactical, Positional, Endgame) inherit from
+``BaseChessAgent``, which provides:
+- Shared retry logic for illegal / malformed LLM moves.
+- UCI move extraction via regex with a line-fallback heuristic.
+- Random-move fallback when all retries are exhausted.
+- ``get_move_candidates`` for best-of-N sampling.
+
+Subclasses must implement ``_build_prompt`` to return a domain-specific
+system / user prompt.
+"""
+
 import re
 import random
 import chess
-import google.generativeai as genai
 
 
 class BaseChessAgent:
     """
-    Abstract base class for all Gemini-powered chess agents.
+    Abstract base class for all LLM-powered chess agents.
 
     Subclasses must implement ``_build_prompt``, which returns the specialised
     system/user prompt for that agent's area of expertise.
@@ -15,7 +28,7 @@ class BaseChessAgent:
     name = "Base"
     description = "Generic chess agent"
 
-    def __init__(self, model: genai.GenerativeModel):
+    def __init__(self, model):
         self.model = model
 
     # ------------------------------------------------------------------
