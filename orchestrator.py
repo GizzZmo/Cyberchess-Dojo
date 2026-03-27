@@ -1,21 +1,20 @@
 """
 AI Orchestrator for Cyberchess-Dojo.
 
-Coordinates multiple specialised Gemini chess agents to produce the best move
+Coordinates multiple specialised chess agents to produce the best move
 for complex positions.  The orchestrator pipeline:
 
   1. Detect the game phase  (opening / middlegame / endgame).
   2. Select the most relevant agent(s) for that phase.
   3. Consult the selected agents and collect their move + reasoning.
   4. If agents agree, return immediately.
-  5. If agents disagree, call Gemini one more time to synthesise a final decision
+  5. If agents disagree, call the LLM one more time to synthesise a final decision
      that weighs all the expert analyses.
 """
 
 import re
 import chess
 from collections import Counter
-import google.generativeai as genai
 from agents import OpeningAgent, TacticalAgent, PositionalAgent, EndgameAgent
 
 
@@ -74,15 +73,18 @@ def _extract_move(text: str) -> str:
 
 class ChessOrchestrator:
     """
-    Orchestrates multiple Gemini chess agents to select the best move.
+    Orchestrates multiple LLM chess agents to select the best move.
+
+    Works with any LLM adapter that implements the ``generate_content`` interface
+    (Gemini, OpenAI, Claude, or any custom ``BaseLLMAdapter``).
 
     Usage::
 
-        orchestrator = ChessOrchestrator(model)
-        move = orchestrator.get_move(board)
+        orchestrator = ChessOrchestrator(adapter)
+        move = orchestrator.get_best_move(board)
     """
 
-    def __init__(self, model: genai.GenerativeModel):
+    def __init__(self, model):
         self.model = model
         self.opening_agent = OpeningAgent(model)
         self.tactical_agent = TacticalAgent(model)
@@ -350,9 +352,9 @@ Task:
 # Convenience fallback (drop-in replacement for the original get_gemini_move)
 # ---------------------------------------------------------------------------
 
-def get_orchestrated_move(board: chess.Board, model: genai.GenerativeModel) -> chess.Move:
-    """Thin wrapper that creates a fresh orchestrator and returns its chosen move."""
-    return ChessOrchestrator(model).get_move(board)
+def get_orchestrated_move(board: chess.Board, model) -> chess.Move:
+    """Thin wrapper that creates a fresh orchestrator and returns its chosen move (best-of-N)."""
+    return ChessOrchestrator(model).get_best_move(board)
 
 
 if __name__ == "__main__":

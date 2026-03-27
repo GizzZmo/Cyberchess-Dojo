@@ -71,3 +71,79 @@ We loosely follow [Conventional Commits](https://www.conventionalcommits.org/):
 Open a [Discussion](https://github.com/GizzZmo/Cyberchess-Dojo/discussions) or an Issue — we're happy to help.
 
 You can also browse the [About page](http://127.0.0.1:5000/about) and [Wiki](http://127.0.0.1:5000/wiki) in the dashboard for project background and full documentation.
+
+---
+
+## 🧩 Extending the Project
+
+### Adding a New Agent
+
+1. Create `agents/your_agent.py` subclassing `BaseChessAgent`:
+
+   ```python
+   from agents.base_agent import BaseChessAgent
+   import chess
+
+   class YourAgent(BaseChessAgent):
+       name = "YourAgent"
+       description = "What this agent specialises in"
+
+       def _build_prompt(self, board: chess.Board, legal_moves: list[str]) -> str:
+           return f"""You are a chess specialist ...
+   Current board (FEN): {board.fen()}
+   Legal moves: {', '.join(legal_moves)}
+   ...
+   On the very last line, write ONLY the UCI move (e.g. e7e5).
+   """
+   ```
+
+2. Export it from `agents/__init__.py`:
+   ```python
+   from agents.your_agent import YourAgent
+   __all__ = [..., "YourAgent"]
+   ```
+
+3. Wire it into `ChessOrchestrator` (`orchestrator.py`) — add it to `__init__` and the phase-routing logic in `get_best_move` / `get_move`.
+
+Key rules for prompts:
+- Always include the FEN and the full legal move list.
+- Instruct the model to put **only** the UCI move on the very last line.
+- Keep the domain focus tight — a specialist beats a generalist in its own area.
+
+---
+
+### Adding a New LLM Provider
+
+1. Add a new adapter class in `llm_adapter.py` that extends `BaseLLMAdapter`:
+
+   ```python
+   class MyProviderAdapter(BaseLLMAdapter):
+       def __init__(self, model_name: str = "default-model", api_key: str = None):
+           # initialise the SDK client here
+           ...
+
+       def generate_content(self, prompt: str) -> _LLMResponse:
+           # call the provider's API and return _LLMResponse(text)
+           ...
+
+       @property
+       def model_name(self) -> str:
+           return self._model_name
+   ```
+
+2. Register the provider in `_PROVIDER_DEFAULTS` and the `create_adapter` factory:
+
+   ```python
+   _PROVIDER_DEFAULTS = {
+       ...,
+       "myprovider": "default-model",
+   }
+
+   # in create_adapter():
+   if provider == "myprovider":
+       return MyProviderAdapter(model_name=resolved_model, api_key=api_key)
+   ```
+
+3. Add `"myprovider"` to the `--llm` choices in `cyberchess.py`'s `_build_arg_parser`.
+
+The adapter only needs to expose `generate_content(prompt) -> _LLMResponse` (duck-typed); everything else — agents, orchestrator, best-of-N — works without modification.
