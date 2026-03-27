@@ -5,126 +5,384 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cyberchess Dojo — Dashboard</title>
   <style>
+    /* ── Reset & base ───────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      min-height: 100vh;
+    :root {
+      --bg:        #0d0d1a;
+      --bg-card:   #0f1626;
+      --bg-border: #0d2244;
+      --accent:    #e94560;
+      --neon:      #4ecca3;
+      --neon2:     #00f0ff;
+      --dim:       #7a8a9a;
+      --text:      #d0d8e4;
+      --matrix:    #00ff41;
     }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      overflow-x: hidden;
+    }
+
+    /* ── Matrix rain canvas ─────────────────────────────────────────── */
+    #matrix-bg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.08;
+    }
+
+    /* ── Scanline overlay ───────────────────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.06) 2px,
+        rgba(0,0,0,0.06) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    header, .grid, .modal-overlay { position: relative; z-index: 2; }
 
     header {
-      background: #16213e;
-      padding: 1rem 2rem;
-      border-bottom: 2px solid #0f3460;
+      background: rgba(15, 22, 40, 0.92);
+      padding: 0.85rem 2rem;
+      border-bottom: 1px solid var(--bg-border);
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 1rem;
       flex-wrap: wrap;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 0 24px rgba(233, 69, 96, 0.08);
     }
-    header h1 { font-size: 1.5rem; color: #e94560; }
-    #connection-status { color: #a0a0b0; font-size: 0.85rem; }
 
-    nav { display: flex; gap: 1.5rem; margin-left: auto; }
+    header h1 {
+      font-size: 1.35rem;
+      color: var(--accent);
+      text-shadow: 0 0 12px rgba(233, 69, 96, 0.6);
+      letter-spacing: 1px;
+    }
+
+    #connection-status { color: var(--dim); font-size: 0.82rem; margin-left: auto; }
+
+    nav { display: flex; gap: 1.25rem; }
     nav a {
-      color: #a0a0b0;
+      color: var(--dim);
       text-decoration: none;
-      font-size: 0.9rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      transition: color 0.2s, background 0.2s;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 3px;
+      transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+      border: 1px solid transparent;
     }
-    nav a:hover  { color: #e0e0e0; background: #0f3460; }
-    nav a.active { color: #4ecca3; font-weight: 600; }
+    nav a:hover { color: var(--neon); border-color: var(--neon); box-shadow: 0 0 8px rgba(78,204,163,0.3); }
+    nav a.active { color: var(--neon); font-weight: 600; border-color: var(--neon); }
+    nav button.nav-btn {
+      background: none; border: 1px solid var(--dim); border-radius: 3px;
+      color: var(--dim); cursor: pointer; font-size: 0.85rem;
+      padding: 0.25rem 0.6rem; font-family: inherit;
+      transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    nav button.nav-btn:hover { color: var(--neon2); border-color: var(--neon2); box-shadow: 0 0 8px rgba(0,240,255,0.3); }
 
+    /* ── Grid ───────────────────────────────────────────────────────── */
     .grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 1.25rem;
-      padding: 1.25rem;
+      gap: 1rem;
+      padding: 1rem;
     }
-    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
 
+    /* ── Cards ──────────────────────────────────────────────────────── */
     .card {
-      background: #16213e;
-      border-radius: 8px;
-      padding: 1.2rem;
-      border: 1px solid #0f3460;
+      background: rgba(15, 22, 38, 0.88);
+      border-radius: 6px;
+      padding: 1.1rem;
+      border: 1px solid var(--bg-border);
+      box-shadow: 0 0 16px rgba(0, 0, 0, 0.4), inset 0 0 1px rgba(78,204,163,0.05);
+      transition: border-color 0.3s, box-shadow 0.3s;
     }
+    .card:hover { border-color: rgba(78,204,163,0.25); box-shadow: 0 0 20px rgba(78,204,163,0.07); }
+
     .card h2 {
-      font-size: 0.85rem;
-      color: #e94560;
-      margin-bottom: 0.85rem;
+      font-size: 0.75rem;
+      color: var(--accent);
+      margin-bottom: 0.8rem;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
+      letter-spacing: 2px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
-    /* Live board */
+    /* ── Board ──────────────────────────────────────────────────────── */
     #board-svg svg { width: 100% !important; height: auto !important; }
-    #move-info { margin-top: 0.5rem; font-size: 0.82rem; color: #a0a0b0; text-align: center; min-height: 1.2em; }
+    #move-info { margin-top: 0.5rem; font-size: 0.8rem; color: var(--dim); text-align: center; min-height: 1.2em; }
 
-    /* Elo */
-    .elo-value { font-size: 2.8rem; font-weight: 700; color: #4ecca3; text-align: center; line-height: 1.1; padding: 0.4rem 0; }
-    .elo-sub   { text-align: center; color: #a0a0b0; font-size: 0.82rem; margin-bottom: 0.75rem; }
-    #elo-canvas { display: block; width: 100%; height: 110px; }
+    .board-controls { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .btn {
+      background: transparent;
+      border: 1px solid var(--bg-border);
+      color: var(--text);
+      padding: 0.3rem 0.75rem;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .btn:hover { border-color: var(--neon); color: var(--neon); box-shadow: 0 0 8px rgba(78,204,163,0.25); }
+    .btn-danger:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 8px rgba(233,69,96,0.25); }
+    .btn-pause { border-color: #f0c040; color: #f0c040; }
+    .btn-pause:hover { box-shadow: 0 0 8px rgba(240,192,64,0.3); }
+    .btn-pause.active { background: rgba(240,192,64,0.15); }
 
-    /* Stats table */
+    /* ── Elo ────────────────────────────────────────────────────────── */
+    .elo-value {
+      font-size: 2.6rem; font-weight: 700; color: var(--neon);
+      text-align: center; line-height: 1.1; padding: 0.4rem 0;
+      text-shadow: 0 0 18px rgba(78,204,163,0.5);
+    }
+    .elo-sub { text-align: center; color: var(--dim); font-size: 0.8rem; margin-bottom: 0.75rem; }
+    #elo-canvas { display: block; width: 100%; height: 100px; }
+
+    /* ── Stats ──────────────────────────────────────────────────────── */
     .stat-row {
       display: flex;
       justify-content: space-between;
-      padding: 0.3rem 0;
-      border-bottom: 1px solid #0f3460;
-      font-size: 0.88rem;
+      padding: 0.28rem 0;
+      border-bottom: 1px solid rgba(13,34,68,0.8);
+      font-size: 0.84rem;
     }
     .stat-row:last-child { border: none; }
-    .stat-label { color: #a0a0b0; }
+    .stat-label { color: var(--dim); }
 
-    /* Game log */
-    #game-log { max-height: 240px; overflow-y: auto; font-size: 0.8rem; font-family: monospace; }
-    .log-entry { padding: 0.2rem 0; border-bottom: 1px solid #0f3460; }
+    /* ── Move list ──────────────────────────────────────────────────── */
+    #move-list-body {
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    #move-list-body::-webkit-scrollbar { width: 5px; }
+    #move-list-body::-webkit-scrollbar-track { background: var(--bg); }
+    #move-list-body::-webkit-scrollbar-thumb { background: var(--bg-border); border-radius: 3px; }
+
+    .move-row {
+      display: grid;
+      grid-template-columns: 2rem 1fr 1fr;
+      gap: 0.25rem;
+      padding: 0.2rem 0.3rem;
+      border-bottom: 1px solid rgba(13,34,68,0.5);
+    }
+    .move-row:nth-child(even) { background: rgba(0,0,0,0.15); }
+    .move-row:last-child { border: none; }
+    .move-num { color: var(--dim); }
+    .move-w { color: #e8e8e8; }
+    .move-b { color: var(--neon); }
+
+    /* ── Game log ───────────────────────────────────────────────────── */
+    #game-log { max-height: 200px; overflow-y: auto; font-size: 0.78rem; font-family: 'Courier New', Courier, monospace; }
+    .log-entry { padding: 0.2rem 0; border-bottom: 1px solid rgba(13,34,68,0.5); }
     .log-entry:last-child { border: none; }
 
-    /* Badges */
+    /* ── Badges ─────────────────────────────────────────────────────── */
     .badge {
-      display: inline-block;
-      padding: 0.1rem 0.45rem;
-      border-radius: 3px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      vertical-align: middle;
+      display: inline-block; padding: 0.1rem 0.45rem;
+      border-radius: 3px; font-size: 0.7rem; font-weight: 600; vertical-align: middle;
     }
-    .badge-win  { background: #1a4a2e; color: #4ecca3; }
-    .badge-loss { background: #4a1a1a; color: #e94560; }
-    .badge-draw { background: #3a3a1a; color: #f0c040; }
-    .badge-live { background: #e94560; color: #fff; animation: blink 1s infinite; }
+    .badge-win  { background: rgba(78,204,163,0.15); color: var(--neon); border: 1px solid var(--neon); }
+    .badge-loss { background: rgba(233,69,96,0.12); color: var(--accent); border: 1px solid var(--accent); }
+    .badge-draw { background: rgba(240,192,64,0.12); color: #f0c040; border: 1px solid #f0c040; }
+    .badge-live { background: var(--accent); color: #fff; animation: blink 1s infinite; font-size: 0.68rem; }
+    .badge-paused { background: #f0c040; color: #000; font-size: 0.68rem; }
 
-    /* Status dot */
     .status-dot {
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: #a0a0b0;
-      margin-right: 6px;
-      vertical-align: middle;
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; background: var(--dim); margin-right: 5px; vertical-align: middle;
     }
-    .dot-ok   { background: #4ecca3; }
-    .dot-live { background: #e94560; animation: blink 1s infinite; }
+    .dot-ok   { background: var(--neon); box-shadow: 0 0 6px var(--neon); }
+    .dot-live { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: blink 1s infinite; }
 
-    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-    /* Placeholder text */
-    .placeholder { color: #a0a0b0; text-align: center; padding: 2rem 0; font-size: 0.88rem; }
+    .placeholder { color: var(--dim); text-align: center; padding: 2rem 0; font-size: 0.85rem; }
+
+    /* ── Import/Export row ───────────────────────────────────────────── */
+    .import-export-row {
+      display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+    .btn-neon { border-color: var(--neon); color: var(--neon); }
+    .btn-neon:hover { background: rgba(78,204,163,0.1); box-shadow: 0 0 10px rgba(78,204,163,0.3); }
+    #import-file { display: none; }
+
+    /* ── Settings modal ─────────────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(3px);
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: #0b1020;
+      border: 1px solid var(--neon);
+      border-radius: 6px;
+      padding: 1.5rem;
+      width: min(540px, 94vw);
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 0 40px rgba(78,204,163,0.15);
+    }
+    .modal h3 {
+      color: var(--neon);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 1.2rem;
+      text-shadow: 0 0 10px rgba(78,204,163,0.5);
+    }
+    .modal h4 { color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; margin: 1rem 0 0.5rem; }
+
+    .field-row { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.75rem; }
+    .field-row label { font-size: 0.78rem; color: var(--dim); }
+    .field-row input, .field-row select {
+      background: #060c18;
+      border: 1px solid var(--bg-border);
+      color: var(--text);
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+    .field-row input:focus, .field-row select:focus {
+      outline: none;
+      border-color: var(--neon);
+      box-shadow: 0 0 6px rgba(78,204,163,0.2);
+    }
+    .field-row input[type="range"] { padding: 0.15rem 0; accent-color: var(--neon); }
+
+    .modal-actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.2rem; }
+    .btn-primary {
+      background: rgba(78,204,163,0.15);
+      border: 1px solid var(--neon);
+      color: var(--neon);
+      padding: 0.4rem 1.2rem;
+      border-radius: 3px;
+      cursor: pointer; font-size: 0.85rem; font-family: inherit;
+      transition: all 0.2s;
+    }
+    .btn-primary:hover { background: rgba(78,204,163,0.3); box-shadow: 0 0 10px rgba(78,204,163,0.3); }
+
+    .toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: #0b1020;
+      border: 1px solid var(--neon);
+      color: var(--neon);
+      padding: 0.6rem 1.2rem;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.3s;
+      box-shadow: 0 0 16px rgba(78,204,163,0.2);
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 16px rgba(233,69,96,0.2); }
   </style>
 </head>
 <body>
 
+<!-- Matrix rain -->
+<canvas id="matrix-bg"></canvas>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <h3>⚙ Settings</h3>
+
+    <h4>Stockfish</h4>
+    <div class="field-row">
+      <label for="s-skill">Skill level: <span id="s-skill-val">5</span></label>
+      <input type="range" id="s-skill" min="0" max="20" value="5" step="1"
+             oninput="document.getElementById('s-skill-val').textContent=this.value" />
+    </div>
+    <div class="field-row">
+      <label for="s-time">Time per move (seconds)</label>
+      <input type="number" id="s-time" min="0.01" max="60" step="0.05" value="0.1" />
+    </div>
+
+    <h4>LLM Provider</h4>
+    <div class="field-row">
+      <label for="s-provider">Provider</label>
+      <select id="s-provider">
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI</option>
+        <option value="claude">Anthropic Claude</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="s-model">Model name (leave blank for default)</label>
+      <input type="text" id="s-model" placeholder="e.g. gemini-1.5-flash / gpt-4o" />
+    </div>
+    <div class="field-row">
+      <label for="s-bon">Best-of-N samples per move</label>
+      <input type="number" id="s-bon" min="1" max="10" value="3" />
+    </div>
+
+    <h4>API Keys</h4>
+    <div class="field-row">
+      <label for="s-gemini-key">Google Gemini API Key</label>
+      <input type="password" id="s-gemini-key" placeholder="AIza…" autocomplete="off" />
+    </div>
+    <div class="field-row">
+      <label for="s-openai-key">OpenAI API Key</label>
+      <input type="password" id="s-openai-key" placeholder="sk-…" autocomplete="off" />
+    </div>
+    <div class="field-row">
+      <label for="s-anthropic-key">Anthropic API Key</label>
+      <input type="password" id="s-anthropic-key" placeholder="sk-ant-…" autocomplete="off" />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="closeSettings()">Cancel</button>
+      <button class="btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
 <header>
-  <h1>&#9822; Cyberchess Dojo — Dashboard</h1>
+  <h1>&#9822; Cyberchess Dojo</h1>
   <nav>
     <a href="/" class="active">Dashboard</a>
     <a href="/about">About</a>
     <a href="/wiki">Wiki</a>
+    <button class="nav-btn" onclick="openSettings()">⚙ Settings</button>
   </nav>
   <span id="connection-status">
     <span class="status-dot" id="status-dot"></span>Connecting…
@@ -136,6 +394,14 @@
   <!-- Live board -->
   <div class="card">
     <h2>Live Board <span id="live-badge"></span></h2>
+    <div class="board-controls">
+      <button class="btn btn-pause" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+      <label class="btn btn-neon" style="cursor:pointer" title="Import PGN">
+        ⬆ Import PGN
+        <input type="file" id="import-file" accept=".pgn,text/plain" onchange="importPGN(this)" />
+      </label>
+      <button class="btn btn-neon" onclick="exportPGN()">⬇ Export PGN</button>
+    </div>
     <div id="board-svg"><p class="placeholder">Waiting for game data…</p></div>
     <div id="move-info"></div>
   </div>
@@ -148,7 +414,13 @@
     <canvas id="elo-canvas" aria-label="Elo history chart"></canvas>
   </div>
 
-  <!-- Game stats -->
+  <!-- Move list -->
+  <div class="card">
+    <h2>Move List</h2>
+    <div id="move-list-body"><p class="placeholder">No moves yet.</p></div>
+  </div>
+
+  <!-- Current game stats -->
   <div class="card">
     <h2>Current Game</h2>
     <div id="game-stats">
@@ -163,7 +435,7 @@
   </div>
 
   <!-- Recent games log -->
-  <div class="card">
+  <div class="card" style="grid-column: 1 / -1;">
     <h2>Recent Games</h2>
     <div id="game-log"><p class="placeholder">No completed games yet.</p></div>
   </div>
@@ -171,144 +443,310 @@
 </div>
 
 <script>
-  // -----------------------------------------------------------------------
-  // Elo sparkline chart
-  // -----------------------------------------------------------------------
-  function drawEloChart(history) {
-    const canvas = document.getElementById('elo-canvas');
-    const ctx    = canvas.getContext('2d');
+// ─── Matrix rain ────────────────────────────────────────────────────────────
+(function () {
+  const canvas = document.getElementById('matrix-bg');
+  const ctx    = canvas.getContext('2d');
+  const CHARS  = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+  let cols, drops;
+  let lastFrame = 0;
+  const FRAME_INTERVAL = 80; // ms between matrix frames (~12 fps)
 
-    // Resize to CSS dimensions
-    canvas.width  = canvas.offsetWidth  || 300;
-    canvas.height = canvas.offsetHeight || 110;
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    if (!history || history.length < 2) {
-      ctx.fillStyle = '#a0a0b0';
-      ctx.font      = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Not enough data', W / 2, H / 2);
-      return;
-    }
-
-    const elos = history.map(g => g.elo_after);
-    const yMin = Math.min(...elos) - 60;
-    const yMax = Math.max(...elos) + 60;
-    const px   = i => 10 + (i / (elos.length - 1)) * (W - 20);
-    const py   = v => H - 8 - ((v - yMin) / (yMax - yMin)) * (H - 18);
-
-    // Grid lines
-    ctx.strokeStyle = '#0f3460';
-    ctx.lineWidth   = 1;
-    [0.25, 0.5, 0.75].forEach(t => {
-      const y = H - 8 - t * (H - 18);
-      ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(W - 10, y); ctx.stroke();
-    });
-
-    // Line
-    ctx.beginPath();
-    elos.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
-    ctx.strokeStyle = '#4ecca3';
-    ctx.lineWidth   = 2;
-    ctx.stroke();
-
-    // Dots
-    elos.forEach((v, i) => {
-      ctx.beginPath();
-      ctx.arc(px(i), py(v), 3, 0, 2 * Math.PI);
-      ctx.fillStyle = '#4ecca3';
-      ctx.fill();
-    });
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols  = Math.min(Math.floor(canvas.width / 20), 120); // cap columns to limit CPU on wide screens
+    drops = Array(cols).fill(1);
   }
 
-  // -----------------------------------------------------------------------
-  // Helpers
-  // -----------------------------------------------------------------------
-  function resultBadge(result, aiColor) {
-    if (result === '1/2-1/2') return '<span class="badge badge-draw">Draw</span>';
-    const aiWon = (result === '0-1' && aiColor === 'black') || (result === '1-0' && aiColor === 'white');
-    return aiWon
-      ? '<span class="badge badge-win">Win</span>'
-      : '<span class="badge badge-loss">Loss</span>';
-  }
-
-  function setText(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val;
-  }
-
-  function setHTML(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = val;
-  }
-
-  // -----------------------------------------------------------------------
-  // Polling loop
-  // -----------------------------------------------------------------------
-  async function poll() {
-    try {
-      const [stateRes, eloRes, gamesRes] = await Promise.all([
-        fetch('/api/state').then(r => r.json()),
-        fetch('/api/elo').then(r => r.json()),
-        fetch('/api/games').then(r => r.json()),
-      ]);
-
-      // Connection OK
-      const dot = document.getElementById('status-dot');
-      if (dot) { dot.className = 'status-dot dot-ok'; }
-      setHTML('connection-status',
-        '<span class="status-dot dot-ok" id="status-dot"></span>Connected — refreshing every 2 s');
-
-      // --- Elo ---
-      if (eloRes && eloRes.current_elo !== null) {
-        setText('elo-value', Math.round(eloRes.current_elo));
-        const h = eloRes.history || [];
-        setText('elo-sub', h.length ? `After ${h.length} game(s)` : 'No games played yet');
-        drawEloChart(h);
-      }
-
-      // --- Board & state ---
-      if (stateRes) {
-        setHTML('board-svg', stateRes.svg || '<p class="placeholder">No board data.</p>');
-        setHTML('live-badge', stateRes.active ? '<span class="badge badge-live">LIVE</span>' : '');
-        setText('move-info', stateRes.active
-          ? `Move ${stateRes.move_number} — ${stateRes.turn} to move`
-          : stateRes.result ? `Game over — ${stateRes.result}` : '');
-
-        setText('stat-status',    stateRes.active ? '🟢 Playing' : '⚪ Idle');
-        setText('stat-game',      stateRes.game_number ?? '—');
-        setText('stat-move',      stateRes.move_number  ?? '—');
-        setText('stat-phase',     stateRes.phase         ?? '—');
-        setText('stat-last-move', stateRes.last_move     ?? '—');
-        setText('stat-sf',  stateRes.stockfish_skill != null ? `Skill ${stateRes.stockfish_skill}` : '—');
-        setText('stat-ai',  stateRes.ai_model ?? '—');
-      }
-
-      // --- Recent games ---
-      if (gamesRes && gamesRes.games && gamesRes.games.length) {
-        const games = gamesRes.games.slice(-20).reverse();
-        setHTML('game-log', games.map(g =>
-          `<div class="log-entry">` +
-          `${resultBadge(g.result, 'black')} ` +
-          `Game ${g.round || '?'} — ${g.result} — ${g.moves} plies — ` +
-          `vs Stockfish Skill ${g.stockfish_skill ?? '?'}` +
-          `</div>`
-        ).join(''));
-      }
-
-    } catch (err) {
-      const dot = document.getElementById('status-dot');
-      if (dot) { dot.className = 'status-dot'; dot.style.background = '#e94560'; }
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    if (ts - lastFrame < FRAME_INTERVAL) return;
+    lastFrame = ts;
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = '14px monospace';
+    for (let i = 0; i < cols; i++) {
+      const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
+      ctx.fillText(ch, i * 20, drops[i] * 16);
+      if (drops[i] * 16 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
     }
   }
 
-  poll();
-  setInterval(poll, 2000);
-  window.addEventListener('resize', () => {
-    // Re-draw Elo chart on resize
-    fetch('/api/elo').then(r => r.json()).then(d => drawEloChart(d.history || [])).catch(() => {});
+  resize();
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(frame);
+})();
+
+// ─── Elo sparkline ──────────────────────────────────────────────────────────
+function drawEloChart(history) {
+  const canvas = document.getElementById('elo-canvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = canvas.offsetWidth  || 300;
+  canvas.height = canvas.offsetHeight || 100;
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!history || history.length < 2) {
+    ctx.fillStyle = '#7a8a9a';
+    ctx.font      = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Not enough data', W / 2, H / 2);
+    return;
+  }
+
+  const elos = history.map(g => g.elo_after);
+  const yMin = Math.min(...elos) - 60;
+  const yMax = Math.max(...elos) + 60;
+  const px   = i => 10 + (i / (elos.length - 1)) * (W - 20);
+  const py   = v => H - 8 - ((v - yMin) / (yMax - yMin)) * (H - 18);
+
+  ctx.strokeStyle = 'rgba(13,34,68,0.8)';
+  ctx.lineWidth   = 1;
+  [0.25, 0.5, 0.75].forEach(t => {
+    const y = H - 8 - t * (H - 18);
+    ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(W - 10, y); ctx.stroke();
   });
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(78,204,163,0.25)');
+  grad.addColorStop(1, 'rgba(78,204,163,0.0)');
+  ctx.beginPath();
+  elos.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
+  ctx.lineTo(px(elos.length - 1), H); ctx.lineTo(px(0), H); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  ctx.beginPath();
+  elos.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
+  ctx.strokeStyle = '#4ecca3';
+  ctx.lineWidth   = 2;
+  ctx.shadowColor = '#4ecca3';
+  ctx.shadowBlur  = 6;
+  ctx.stroke();
+  ctx.shadowBlur  = 0;
+
+  elos.forEach((v, i) => {
+    ctx.beginPath();
+    ctx.arc(px(i), py(v), 3, 0, 2 * Math.PI);
+    ctx.fillStyle = '#4ecca3';
+    ctx.fill();
+  });
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function resultBadge(result, aiColor) {
+  if (result === '1/2-1/2') return '<span class="badge badge-draw">Draw</span>';
+  const aiWon = (result === '0-1' && aiColor === 'black') || (result === '1-0' && aiColor === 'white');
+  return aiWon
+    ? '<span class="badge badge-win">Win</span>'
+    : '<span class="badge badge-loss">Loss</span>';
+}
+
+function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+function setHTML(id, val) { const el = document.getElementById(id); if (el) el.innerHTML  = val; }
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+// ─── Move list renderer ──────────────────────────────────────────────────────
+function renderMoveList(sanMoves) {
+  if (!sanMoves || !sanMoves.length) {
+    setHTML('move-list-body', '<p class="placeholder">No moves yet.</p>');
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < sanMoves.length; i += 2) {
+    const num  = (i / 2) + 1;
+    const wMov = sanMoves[i]     || '';
+    const bMov = sanMoves[i + 1] || '';
+    html += `<div class="move-row">
+      <span class="move-num">${num}.</span>
+      <span class="move-w">${wMov}</span>
+      <span class="move-b">${bMov}</span>
+    </div>`;
+  }
+  setHTML('move-list-body', html);
+  // Scroll to the bottom so the latest move is visible.
+  const body = document.getElementById('move-list-body');
+  if (body) body.scrollTop = body.scrollHeight;
+}
+
+// ─── Pause toggle ─────────────────────────────────────────────────────────────
+let _paused = false;
+
+async function togglePause() {
+  try {
+    const res  = await fetch('/api/pause', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused: !_paused }) });
+    const data = await res.json();
+    _paused = data.paused;
+    updatePauseBtn();
+  } catch { showToast('Could not reach server', true); }
+}
+
+function updatePauseBtn() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;
+  if (_paused) {
+    btn.textContent = '▶ Resume';
+    btn.classList.add('active');
+  } else {
+    btn.textContent = '⏸ Pause';
+    btn.classList.remove('active');
+  }
+}
+
+// ─── Import PGN ──────────────────────────────────────────────────────────────
+async function importPGN(input) {
+  if (!input.files || !input.files[0]) return;
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  try {
+    const res  = await fetch('/api/games/import', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) showToast('PGN imported successfully ✓');
+    else         showToast('Import failed: ' + data.error, true);
+  } catch { showToast('Import request failed', true); }
+  input.value = '';
+}
+
+// ─── Export PGN ──────────────────────────────────────────────────────────────
+function exportPGN() {
+  const a = document.createElement('a');
+  a.href = '/api/games/export';
+  a.click();
+}
+
+// ─── Settings modal ──────────────────────────────────────────────────────────
+function openSettings() {
+  fetch('/api/settings').then(r => r.json()).then(d => {
+    document.getElementById('s-skill').value     = d.stockfish_skill ?? 5;
+    document.getElementById('s-skill-val').textContent = d.stockfish_skill ?? 5;
+    document.getElementById('s-time').value      = d.stockfish_time ?? 0.1;
+    document.getElementById('s-provider').value  = d.llm_provider   ?? 'gemini';
+    document.getElementById('s-model').value     = d.llm_model       ?? '';
+    document.getElementById('s-bon').value       = d.best_of_n       ?? 3;
+    document.getElementById('s-gemini-key').value    = d.gemini_api_key    ?? '';
+    document.getElementById('s-openai-key').value    = d.openai_api_key    ?? '';
+    document.getElementById('s-anthropic-key').value = d.anthropic_api_key ?? '';
+    document.getElementById('settings-modal').classList.add('open');
+  }).catch(err => {
+    console.error('Failed to load settings:', err);
+    showToast('Could not load settings — check console for details', true);
+  });
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+
+async function saveSettings() {
+  const payload = {
+    stockfish_skill:  parseInt(document.getElementById('s-skill').value,  10),
+    stockfish_time:   parseFloat(document.getElementById('s-time').value),
+    llm_provider:     document.getElementById('s-provider').value,
+    llm_model:        document.getElementById('s-model').value.trim(),
+    best_of_n:        parseInt(document.getElementById('s-bon').value, 10),
+    gemini_api_key:   document.getElementById('s-gemini-key').value,
+    openai_api_key:   document.getElementById('s-openai-key').value,
+    anthropic_api_key: document.getElementById('s-anthropic-key').value,
+  };
+  try {
+    const res  = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) { showToast('Settings saved ✓'); closeSettings(); }
+    else         showToast('Save failed: ' + data.error, true);
+  } catch { showToast('Could not save settings', true); }
+}
+
+// Close modal on backdrop click
+document.getElementById('settings-modal').addEventListener('click', function (e) {
+  if (e.target === this) closeSettings();
+});
+
+// ─── Polling loop ─────────────────────────────────────────────────────────────
+async function poll() {
+  try {
+    const [stateRes, eloRes, gamesRes, pauseRes] = await Promise.all([
+      fetch('/api/state').then(r => r.json()),
+      fetch('/api/elo').then(r => r.json()),
+      fetch('/api/games').then(r => r.json()),
+      fetch('/api/pause').then(r => r.json()),
+    ]);
+
+    // Connection OK
+    setHTML('connection-status',
+      '<span class="status-dot dot-ok" id="status-dot"></span>Connected — refreshing every 2 s');
+
+    // Pause state
+    _paused = pauseRes.paused || false;
+    updatePauseBtn();
+
+    // Elo
+    if (eloRes && eloRes.current_elo !== null) {
+      setText('elo-value', Math.round(eloRes.current_elo));
+      const h = eloRes.history || [];
+      setText('elo-sub', h.length ? `After ${h.length} game(s)` : 'No games played yet');
+      drawEloChart(h);
+    }
+
+    // Board & state
+    if (stateRes) {
+      setHTML('board-svg', stateRes.svg || '<p class="placeholder">No board data.</p>');
+
+      let liveBadge = '';
+      if (stateRes.active) {
+        liveBadge = stateRes.paused
+          ? '<span class="badge badge-paused">PAUSED</span>'
+          : '<span class="badge badge-live">LIVE</span>';
+      }
+      setHTML('live-badge', liveBadge);
+
+      setText('move-info', stateRes.active
+        ? `Move ${stateRes.move_number} — ${stateRes.turn} to move`
+        : stateRes.result ? `Game over — ${stateRes.result}` : '');
+
+      setText('stat-status',    stateRes.active ? (stateRes.paused ? '⏸ Paused' : '🟢 Playing') : '⚪ Idle');
+      setText('stat-game',      stateRes.game_number ?? '—');
+      setText('stat-move',      stateRes.move_number  ?? '—');
+      setText('stat-phase',     stateRes.phase         ?? '—');
+      setText('stat-last-move', stateRes.last_move     ?? '—');
+      setText('stat-sf',  stateRes.stockfish_skill != null ? `Skill ${stateRes.stockfish_skill}` : '—');
+      setText('stat-ai',  stateRes.ai_model ?? '—');
+
+      renderMoveList(stateRes.san_moves || []);
+    }
+
+    // Recent games
+    if (gamesRes && gamesRes.games && gamesRes.games.length) {
+      const games = gamesRes.games.slice(-20).reverse();
+      setHTML('game-log', games.map(g =>
+        `<div class="log-entry">` +
+        `${resultBadge(g.result, 'black')} ` +
+        `Game ${g.round || '?'} — ${g.result} — ${g.moves} plies — ` +
+        `vs Stockfish Skill ${g.stockfish_skill ?? '?'}` +
+        `</div>`
+      ).join(''));
+    }
+
+  } catch (err) {
+    setHTML('connection-status',
+      '<span class="status-dot" style="background:var(--accent)" id="status-dot"></span>Disconnected');
+  }
+}
+
+poll();
+setInterval(poll, 2000);
+window.addEventListener('resize', () => {
+  fetch('/api/elo').then(r => r.json()).then(d => drawEloChart(d.history || [])).catch(() => {});
+});
 </script>
 
 </body>

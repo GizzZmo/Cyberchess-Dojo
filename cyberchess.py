@@ -30,6 +30,7 @@ import datetime
 import json
 import os
 import random
+import time
 
 import chess
 import chess.engine
@@ -55,6 +56,31 @@ BEST_OF_N = 3
 # Files written during a run
 _PGN_FILE = "training_data.pgn"
 _STATE_FILE = "game_state.json"    # live board state for the web dashboard
+_PAUSE_FILE = "pause_flag.json"    # written by dashboard to pause/resume a game
+_SETTINGS_FILE = "settings.json"   # persisted settings (written by dashboard)
+
+
+# ---------------------------------------------------------------------------
+# Pause support
+# ---------------------------------------------------------------------------
+
+def _is_paused() -> bool:
+    """Return True if the dashboard has requested a pause."""
+    try:
+        with open(_PAUSE_FILE) as f:
+            return json.load(f).get("paused", False)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+
+
+def _wait_if_paused(live_dashboard: bool) -> None:
+    """Block execution while a pause is active, printing a status line once."""
+    if not live_dashboard or not _is_paused():
+        return
+    print("  ⏸  Game paused via dashboard — waiting to resume…")
+    while _is_paused():
+        time.sleep(1)
+    print("  ▶  Resumed.")
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +228,17 @@ def play_game(
     orchestrator = ChessOrchestrator(adapter)
     board = chess.Board()
 
+    # Maintain a SAN move list for the dashboard move-list panel.
+    san_moves: list[str] = []
+
     print(f"\n{'=' * 60}")
     print(f"  GAME {game_number}: Stockfish Skill {stockfish_skill} (White) vs {ai_model_name} (Black)")
     print(f"{'=' * 60}")
 
     while not board.is_game_over():
+        # Honour a pause requested from the dashboard before processing each move.
+        _wait_if_paused(live_dashboard)
+
         print(f"\nMove {board.fullmove_number}")
         print(board)
 
@@ -221,6 +253,7 @@ def play_game(
             )
             _write_game_state({
                 "active": True,
+                "paused": _is_paused(),
                 "game_number": game_number,
                 "fen": board.fen(),
                 "move_number": board.fullmove_number,
@@ -229,19 +262,24 @@ def play_game(
                 "last_move": board.peek().uci() if board.move_stack else None,
                 "stockfish_skill": stockfish_skill,
                 "ai_model": ai_model_name,
+                "san_moves": san_moves,
             })
 
         if board.turn == chess.WHITE:
             print("Stockfish is thinking...")
             result = engine.play(board, chess.engine.Limit(time=stockfish_time))
+            san = board.san(result.move)
             board.push(result.move)
-            print(f"Stockfish played: {result.move.uci()}")
+            san_moves.append(san)
+            print(f"Stockfish played: {result.move.uci()} ({san})")
 
         else:
             print("AI Orchestrator is thinking...")
             move = orchestrator.get_best_move(board, n=best_of_n)
+            san = board.san(move)
             board.push(move)
-            print(f"AI played: {move.uci()}")
+            san_moves.append(san)
+            print(f"AI played: {move.uci()} ({san})")
 
     print("\n--- GAME OVER ---")
     print(f"Result: {board.result()}")
@@ -252,12 +290,14 @@ def play_game(
     if live_dashboard:
         _write_game_state({
             "active": False,
+            "paused": False,
             "game_number": game_number,
             "fen": board.fen(),
             "result": board.result(),
             "move_number": board.fullmove_number,
             "stockfish_skill": stockfish_skill,
             "ai_model": ai_model_name,
+            "san_moves": san_moves,
         })
 
     return board

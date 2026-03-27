@@ -25,6 +25,7 @@ API endpoints
 ``GET /api/games``     — Returns a list of completed games parsed from the PGN.
 """
 
+import io
 import json
 import os
 from pathlib import Path
@@ -32,14 +33,27 @@ from pathlib import Path
 import chess
 import chess.pgn
 import chess.svg
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request, send_file
 
 app = Flask(__name__)
 
 # File paths — can be overridden via environment variables.
-_PGN_FILE   = os.environ.get("PGN_FILE",   "training_data.pgn")
-_ELO_FILE   = os.environ.get("ELO_FILE",   "elo_history.json")
-_STATE_FILE = os.environ.get("STATE_FILE", "game_state.json")
+_PGN_FILE      = os.environ.get("PGN_FILE",      "training_data.pgn")
+_ELO_FILE      = os.environ.get("ELO_FILE",      "elo_history.json")
+_STATE_FILE    = os.environ.get("STATE_FILE",    "game_state.json")
+_PAUSE_FILE    = os.environ.get("PAUSE_FILE",    "pause_flag.json")
+_SETTINGS_FILE = os.environ.get("SETTINGS_FILE", "settings.json")
+
+_SETTINGS_DEFAULTS: dict = {
+    "stockfish_skill": 5,
+    "stockfish_time": 0.1,
+    "llm_provider": "gemini",
+    "llm_model": "",
+    "best_of_n": 3,
+    "gemini_api_key": "",
+    "openai_api_key": "",
+    "anthropic_api_key": "",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +175,100 @@ def api_elo():
 def api_games():
     """Return a list of completed games from the PGN training file."""
     return jsonify({"games": _parse_pgn_games()})
+
+
+@app.route("/api/games/export")
+def api_games_export():
+    """Download the full PGN training file."""
+    pgn_path = Path(_PGN_FILE)
+    if not pgn_path.exists():
+        return jsonify({"error": "No PGN file found"}), 404
+    with open(pgn_path, "rb") as f:
+        data = f.read()
+    return send_file(
+        io.BytesIO(data),
+        mimetype="application/x-chess-pgn",
+        as_attachment=True,
+        download_name="cyberchess_games.pgn",
+    )
+
+
+@app.route("/api/games/import", methods=["POST"])
+def api_games_import():
+    """Append an uploaded PGN file to the training dataset."""
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    uploaded = request.files["file"]
+    # Guard against excessively large uploads (limit: 10 MB).
+    raw = uploaded.read(10 * 1024 * 1024 + 1)
+    if len(raw) > 10 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "File too large (max 10 MB)"}), 413
+    content = raw.decode("utf-8", errors="replace")
+    # Validate that the upload contains at least one readable game.
+    if chess.pgn.read_game(io.StringIO(content)) is None:
+        return jsonify({"ok": False, "error": "No valid PGN games found in upload"}), 400
+    try:
+        with open(_PGN_FILE, "a") as out:
+            out.write("\n" + content.strip() + "\n\n")
+        return jsonify({"ok": True})
+    except OSError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pause", methods=["GET"])
+def api_pause_get():
+    """Return the current pause state."""
+    state = _read_json(_PAUSE_FILE)
+    return jsonify({"paused": state.get("paused", False)})
+
+
+@app.route("/api/pause", methods=["POST"])
+def api_pause_post():
+    """Toggle (or explicitly set) the pause flag for a running game."""
+    body = request.get_json(force=True, silent=True) or {}
+    current = _read_json(_PAUSE_FILE).get("paused", False)
+    # Allow explicit {"paused": true/false} or toggle when key is absent.
+    new_state = body.get("paused", not current)
+    try:
+        with open(_PAUSE_FILE, "w") as f:
+            json.dump({"paused": bool(new_state)}, f)
+        return jsonify({"paused": bool(new_state)})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/settings", methods=["GET"])
+def api_settings_get():
+    """Return current settings (API keys are partially masked)."""
+    stored = _read_json(_SETTINGS_FILE)
+    merged = dict(_SETTINGS_DEFAULTS)
+    merged.update(stored)
+    # Partially mask API keys so the browser never receives the full secret.
+    for key_field in ("gemini_api_key", "openai_api_key", "anthropic_api_key"):
+        raw = merged.get(key_field, "")
+        if raw and len(raw) > 4:
+            merged[key_field] = "****" + raw[-4:]
+        elif raw:
+            merged[key_field] = "****"
+    return jsonify(merged)
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_settings_post():
+    """Persist settings sent as JSON.  Masked key values are ignored."""
+    body = request.get_json(force=True, silent=True) or {}
+    stored = _read_json(_SETTINGS_FILE)
+    for k, v in body.items():
+        # Skip any value that looks like a masked key (starts with ****).
+        if isinstance(v, str) and v.startswith("****"):
+            continue
+        stored[k] = v
+    try:
+        with open(_SETTINGS_FILE, "w") as f:
+            json.dump(stored, f, indent=2)
+        return jsonify({"ok": True})
+    except OSError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------
