@@ -16,6 +16,7 @@ import re
 import chess
 from collections import Counter
 from agents import OpeningAgent, TacticalAgent, PositionalAgent, EndgameAgent
+import opening_book as ob
 
 _PIECE_VALUES = {
     chess.PAWN: 1,
@@ -131,6 +132,113 @@ def _apply_tactical_safety_filter(
         print(
             f"  [Orchestrator] Safety filter replaced {chosen_move.uci()} "
             f"(risk={chosen_risk}) with {best_move.uci()} (risk={best_risk})"
+        )
+        return best_move
+    return chosen_move
+
+
+def _preferred_opening_move(board: chess.Board) -> chess.Move | None:
+    """Return the strongest available opening-theory move, if known."""
+    book_moves = ob.get_book_moves(board)
+    if not book_moves:
+        book_moves = ob.get_theoretic_moves(board)
+    legal = {m.uci() for m in board.legal_moves}
+    for move_uci in book_moves:
+        if move_uci in legal:
+            try:
+                return chess.Move.from_uci(move_uci)
+            except ValueError:
+                continue
+    return None
+
+
+def _is_passed_pawn(board: chess.Board, square: chess.Square, color: bool) -> bool:
+    """Return True if the pawn on *square* is a passed pawn."""
+    if board.piece_type_at(square) != chess.PAWN:
+        return False
+    rank = chess.square_rank(square)
+    file = chess.square_file(square)
+    enemy = not color
+    enemy_pawns = board.pieces(chess.PAWN, enemy)
+    file_candidates = [f for f in (file - 1, file, file + 1) if 0 <= f <= 7]
+
+    for enemy_sq in enemy_pawns:
+        enemy_file = chess.square_file(enemy_sq)
+        if enemy_file not in file_candidates:
+            continue
+        enemy_rank = chess.square_rank(enemy_sq)
+        if color == chess.WHITE and enemy_rank > rank:
+            return False
+        if color == chess.BLACK and enemy_rank < rank:
+            return False
+    return True
+
+
+def _king_center_distance(square: chess.Square) -> int:
+    """Manhattan-like distance to the central 4 squares (lower is better)."""
+    rank = chess.square_rank(square)
+    file = chess.square_file(square)
+    centers = ((3, 3), (3, 4), (4, 3), (4, 4))
+    return min(abs(file - cf) + abs(rank - cr) for cf, cr in centers)
+
+
+def _endgame_conversion_score(board: chess.Board, move: chess.Move) -> int:
+    """
+    Return a coarse endgame-conversion score for *move* (higher is better).
+    """
+    mover = board.turn
+    moving_piece = board.piece_at(move.from_square)
+    captured_piece = board.piece_at(move.to_square)
+    score = 0
+
+    if captured_piece:
+        score += _PIECE_VALUES.get(captured_piece.piece_type, 0)
+
+    board.push(move)
+    try:
+        if board.is_checkmate():
+            return 10_000
+
+        # Encourage king activity.
+        king_sq = board.king(mover)
+        if king_sq is not None:
+            score += max(0, 5 - _king_center_distance(king_sq))
+
+        # Reward passed pawns and their progress.
+        for sq in board.pieces(chess.PAWN, mover):
+            if _is_passed_pawn(board, sq, mover):
+                rank = chess.square_rank(sq)
+                advance = rank if mover == chess.WHITE else (7 - rank)
+                score += 2 + advance // 2
+
+        if moving_piece and moving_piece.piece_type == chess.PAWN:
+            to_rank = chess.square_rank(move.to_square)
+            progress = to_rank if mover == chess.WHITE else (7 - to_rank)
+            score += 1 + progress // 2
+    finally:
+        board.pop()
+
+    return score
+
+
+def _apply_endgame_conversion_filter(
+    board: chess.Board,
+    chosen_move: chess.Move,
+    candidates: list[chess.Move],
+) -> chess.Move:
+    """
+    Replace *chosen_move* when another candidate has a clearly stronger
+    endgame-conversion score.
+    """
+    if len(candidates) <= 1:
+        return chosen_move
+    chosen_score = _endgame_conversion_score(board, chosen_move)
+    scored = [(move, _endgame_conversion_score(board, move)) for move in candidates]
+    best_move, best_score = max(scored, key=lambda item: item[1])
+    if best_score >= chosen_score + 2:
+        print(
+            f"  [Orchestrator] Endgame filter replaced {chosen_move.uci()} "
+            f"(score={chosen_score}) with {best_move.uci()} (score={best_score})"
         )
         return best_move
     return chosen_move
@@ -337,6 +445,10 @@ Task:
         candidates: list[tuple[chess.Move, str]] = []
 
         if phase == "opening":
+            theory_move = _preferred_opening_move(board)
+            if theory_move is not None:
+                print(f"  [Orchestrator] → Opening theory selected: {theory_move.uci()}")
+                return theory_move
             print(f"  [Orchestrator] → OpeningAgent ×{n}")
             candidates = self.opening_agent.get_move_candidates(board, n)
 
@@ -362,7 +474,10 @@ Task:
                 candidates += self.positional_agent.get_move_candidates(board, n_primary)
                 candidates += self.tactical_agent.get_move_candidates(board, n_secondary)
 
-        return self._rank_candidates(board, candidates)
+        chosen = self._rank_candidates(board, candidates)
+        if phase == "endgame":
+            chosen = _apply_endgame_conversion_filter(board, chosen, [move for move, _ in candidates])
+        return chosen
 
     # ------------------------------------------------------------------
     # Original single-sample entry point (kept for backward compatibility)
