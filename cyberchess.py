@@ -59,6 +59,13 @@ _STATE_FILE = "game_state.json"    # live board state for the web dashboard
 _PAUSE_FILE = "pause_flag.json"    # written by dashboard to pause/resume a game
 _SETTINGS_FILE = "settings.json"   # persisted settings (written by dashboard)
 
+# Time controls available for training sessions.
+TIME_CONTROLS: dict[str, float] = {
+    "classic": 0.3,
+    "rapid": 0.1,
+    "lightning": 0.03,
+}
+
 
 # ---------------------------------------------------------------------------
 # Pause support
@@ -420,13 +427,30 @@ def main(argv=None) -> None:
     ai_label = f"{args.llm.capitalize()} ({adapter.model_name})"
 
     print(f"LLM provider : {ai_label}")
-    print(f"Stockfish    : {stockfish_path}  (skill={args.skill}, time={args.time}s)")
+    # Resolve optional settings from dashboard persistence.
+    settings = {}
+    try:
+        with open(_SETTINGS_FILE) as f:
+            settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        settings = {}
+
+    selected_mode = (settings.get("time_control_mode") or "rapid").lower()
+    if selected_mode not in TIME_CONTROLS:
+        selected_mode = "rapid"
+
+    # CLI --time still has highest priority. Otherwise use selected mode preset.
+    effective_time = args.time if "--time" in (argv or []) else TIME_CONTROLS[selected_mode]
+
+    print(f"Stockfish    : {stockfish_path}  (skill={args.skill}, time={effective_time}s, mode={selected_mode})")
     print(f"Best-of-N    : {args.best_of_n}")
     print(f"Games to play: {args.games}")
 
     # Elo tracking — load existing history and show current rating
     from elo_tracker import EloTracker
+    from adaptive_system import AdaptiveTrainingManager
     elo = EloTracker()
+    adaptive = AdaptiveTrainingManager()
     if elo.games_played > 0:
         print(f"\n{elo.report()}\n")
 
@@ -445,24 +469,38 @@ def main(argv=None) -> None:
             print(f"  GAME {game_idx} of {args.games}")
             print(f"{'#' * 60}")
 
+        plan = adaptive.plan_next_game(
+            base_skill=args.skill,
+            base_time=effective_time,
+            base_best_of_n=args.best_of_n,
+            elo_history=elo.history,
+        )
+
+        print(
+            f"🧭 Adaptive plan: regime={plan['regime']} | "
+            f"recent_score={plan['recent_score']:.2f} | "
+            f"skill={plan['stockfish_skill']} | time={plan['stockfish_time']}s | "
+            f"best_of_n={plan['best_of_n']}"
+        )
+
         board = play_game(
             adapter=adapter,
             stockfish_path=stockfish_path,
-            stockfish_skill=args.skill,
-            stockfish_time=args.time,
-            best_of_n=args.best_of_n,
+            stockfish_skill=plan["stockfish_skill"],
+            stockfish_time=plan["stockfish_time"],
+            best_of_n=plan["best_of_n"],
             game_number=game_idx,
             live_dashboard=args.dashboard,
             ai_model_name=ai_label,
         )
 
-        save_game_data(board, args.skill, ai_label, game_number=game_idx)
+        save_game_data(board, plan["stockfish_skill"], ai_label, game_number=game_idx)
 
         # Update and display Elo
         prev_elo = elo.current_elo
         delta = elo.update(
             result=board.result(),
-            opponent_skill=args.skill,
+            opponent_skill=plan["stockfish_skill"],
             game_number=game_idx,
             ai_color="black",
         )
