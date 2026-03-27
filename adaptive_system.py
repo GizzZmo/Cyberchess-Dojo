@@ -10,6 +10,12 @@ import os
 
 
 _DEFAULT_PROGRESS_FILE = "adaptive_progress.json"
+_SMOOTHING_CURRENT_WEIGHT = 0.7
+_SMOOTHING_PREVIOUS_WEIGHT = 0.3
+_RECOVERY_THRESHOLD = 0.30
+_RECOVERY_HYSTERESIS_THRESHOLD = 0.33
+_CHALLENGE_THRESHOLD = 0.70
+_CHALLENGE_HYSTERESIS_THRESHOLD = 0.67
 
 
 def _score_from_ai_perspective(result: str, ai_color: str = "black") -> float:
@@ -83,7 +89,10 @@ class AdaptiveTrainingManager:
         previous_plan = self._data.get("history", [])[-1] if self._data.get("history") else {}
         previous_recent = float(previous_plan.get("recent_score", recent_raw))
         # Exponential smoothing to reduce oscillation in regime switching.
-        recent = (0.7 * recent_raw) + (0.3 * previous_recent)
+        recent = (
+            _SMOOTHING_CURRENT_WEIGHT * recent_raw
+            + _SMOOTHING_PREVIOUS_WEIGHT * previous_recent
+        )
 
         skill = int(base_skill)
         stockfish_time = float(base_time)
@@ -92,8 +101,16 @@ class AdaptiveTrainingManager:
         previous_regime = str(previous_plan.get("regime", "stable"))
 
         # Hysteresis thresholds: avoid rapid flips around boundaries.
-        low_threshold = 0.33 if previous_regime == "recovery" else 0.30
-        high_threshold = 0.67 if previous_regime == "challenge" else 0.70
+        low_threshold = (
+            _RECOVERY_HYSTERESIS_THRESHOLD
+            if previous_regime == "recovery"
+            else _RECOVERY_THRESHOLD
+        )
+        high_threshold = (
+            _CHALLENGE_HYSTERESIS_THRESHOLD
+            if previous_regime == "challenge"
+            else _CHALLENGE_THRESHOLD
+        )
 
         if recent < low_threshold:
             regime = "recovery"
