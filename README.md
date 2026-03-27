@@ -41,7 +41,7 @@ Every game is saved as a [PGN](https://en.wikipedia.org/wiki/Portable_Game_Notat
 │                   │                                  │
 │            UCI move ──► board.push()                 │
 │                   │                                  │
-│        training_data.pgn  elo_history.json           │
+│   training_data.pgn  elo_history.json  settings.json │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -88,6 +88,7 @@ A full game loop looks like this:
    - It selects the appropriate specialist agent(s) and requests `N` independent move samples (best-of-N).
    - If all samples agree, that move is played immediately.
    - If samples differ, a ranking call picks the strongest candidate.
+   - Before each move the arena checks `pause_flag.json`; if a pause was requested from the dashboard it waits until the flag clears.
 4. **Post-game** — The completed game is appended to `training_data.pgn`; the AI's Elo is updated in `elo_history.json`.
 5. **Fine-tuning** — After collecting games, `finetune_pipeline.py` converts the PGN into a JSONL dataset ready for supervised fine-tuning.
 
@@ -105,7 +106,7 @@ A full game loop looks like this:
 
 ## 🔑 Environment Variables
 
-All sensitive configuration is read from environment variables (never hard-coded).
+All sensitive configuration is read from environment variables (never hard-coded).  API keys can also be entered directly in the **Settings** panel of the web dashboard (see [Web Dashboard](#-web-dashboard)) and are stored locally in `settings.json`.
 
 | Variable | Provider | Required | Description |
 |----------|----------|----------|-------------|
@@ -116,6 +117,8 @@ All sensitive configuration is read from environment variables (never hard-coded
 | `PGN_FILE` | Dashboard | — | Override the default `training_data.pgn` path |
 | `ELO_FILE` | Dashboard | — | Override the default `elo_history.json` path |
 | `STATE_FILE` | Dashboard | — | Override the default `game_state.json` path |
+| `PAUSE_FILE` | Dashboard | — | Override the default `pause_flag.json` path |
+| `SETTINGS_FILE` | Dashboard | — | Override the default `settings.json` path |
 
 CLI flags (`--api-key`, `--stockfish`) override the corresponding environment variables.
 
@@ -149,6 +152,8 @@ export GOOGLE_API_KEY="your-gemini-api-key"
 $env:STOCKFISH_PATH = "C:/Users/Jon/Downloads/stockfish/stockfish-windows-x86-64.exe"
 $env:GOOGLE_API_KEY = "your-gemini-api-key"
 ```
+
+> **Tip:** API keys can also be set from the browser using the **⚙ Settings** button in the web dashboard — no terminal needed.
 
 ### 4. Run the arena
 
@@ -258,11 +263,13 @@ python cyberchess.py --llm claude --model claude-3-haiku-20240307
 
 All three providers expose the same interface through `llm_adapter.py`, so the agents and orchestrator work identically regardless of which LLM is selected.
 
+> **Alternative:** API keys for all three providers can be entered without a terminal via the **⚙ Settings** panel in the web dashboard.
+
 ---
 
 ## 🌐 Web Dashboard
 
-The dashboard provides a live browser view of the board, Elo history chart, and game log.
+The dashboard provides a live browser view of the board, move list, Elo history chart, and game log, with an interactive cyberpunk / matrix aesthetic.
 
 **Step 1** — Start the arena with `--dashboard`:
 ```bash
@@ -281,24 +288,60 @@ The board updates automatically every 2 seconds.  Custom host/port:
 python dashboard.py --host 0.0.0.0 --port 8080
 ```
 
-The dashboard includes three built-in pages:
+### Dashboard pages
 
 | Page | URL | Description |
 |------|-----|-------------|
-| **Dashboard** | `/` | Live board, Elo chart, and game log |
+| **Dashboard** | `/` | Live board, move list, Elo chart, game log, pause/resume, PGN import/export, and Settings modal |
 | **About** | `/about` | Project overview, features, architecture, and links |
 | **Wiki** | `/wiki` | Full documentation — setup, CLI reference, agents, FAQ |
 
-**Dashboard API endpoints:**
+### Dashboard features
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /` | Live dashboard HTML |
-| `GET /about` | About page — project overview and features |
-| `GET /wiki` | Wiki — full in-browser documentation |
-| `GET /api/state` | Current board state (FEN, phase, last move) |
-| `GET /api/elo` | Full Elo history JSON |
-| `GET /api/games` | Completed games parsed from `training_data.pgn` |
+#### ⏸ Pause / Resume
+Click the **Pause** button on the Live Board card to freeze the arena between moves.  The arena polls `pause_flag.json` before every move and waits until the flag clears.  Click **Resume** to continue.
+
+#### 📋 Move List
+A two-column SAN move table (White / Black) updates after every half-move and automatically scrolls to show the latest move.
+
+#### ⬆ Import PGN
+Upload a `.pgn` file to append its games to `training_data.pgn`.  The file is validated (must contain at least one readable game; maximum 10 MB) before being written.
+
+#### ⬇ Export PGN
+Downloads the full `training_data.pgn` as `cyberchess_games.pgn`.
+
+#### ⚙ Settings
+Click the **⚙ Settings** button in the navigation bar to open the settings modal.  Changes are persisted to `settings.json` and take effect on the next arena run.
+
+| Setting | Description |
+|---------|-------------|
+| Stockfish skill | Skill level 0–20 (slider) |
+| Time per move | Seconds Stockfish is allowed per move |
+| LLM provider | Gemini, OpenAI, or Anthropic Claude |
+| Model name | Model identifier override |
+| Best-of-N | Number of LLM samples per move |
+| Gemini API key | Google AI Studio key |
+| OpenAI API key | OpenAI platform key |
+| Anthropic API key | Anthropic key |
+
+> API key fields are stored locally in `settings.json` and are partially masked when loaded back into the browser (`****xxxx`).
+
+### Dashboard API endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /` | — | Live dashboard HTML |
+| `GET /about` | — | About page |
+| `GET /wiki` | — | Wiki documentation |
+| `GET /api/state` | — | Current board state (FEN, phase, last move, SAN move list) |
+| `GET /api/elo` | — | Full Elo history JSON |
+| `GET /api/games` | — | Completed games parsed from `training_data.pgn` |
+| `GET /api/games/export` | — | Download `training_data.pgn` |
+| `POST /api/games/import` | multipart/form-data (`file`) | Append uploaded PGN to training dataset |
+| `GET /api/pause` | — | Return current pause state `{"paused": bool}` |
+| `POST /api/pause` | JSON `{"paused": bool}` | Set or toggle pause flag |
+| `GET /api/settings` | — | Return current settings (API keys partially masked) |
+| `POST /api/settings` | JSON | Persist settings to `settings.json` |
 
 ---
 
@@ -358,19 +401,21 @@ Cyberchess-Dojo/
 │   ├── positional_agent.py     # Positional / strategic specialist
 │   └── endgame_agent.py        # Endgame technique specialist
 ├── templates/
-│   ├── index.html              # Web dashboard HTML (served by dashboard.py)
+│   ├── index.html              # Web dashboard — live board, move list, settings, import/export
 │   ├── about.html              # About page — project overview, features, architecture
 │   └── wiki.html               # Wiki — full in-browser documentation
 ├── orchestrator.py             # ChessOrchestrator — routes board states to agents
-├── cyberchess.py               # Main arena script (loop mode, Elo, dashboard)
+├── cyberchess.py               # Main arena script (loop mode, pause support, Elo, dashboard)
 ├── llm_adapter.py              # Unified LLM interface (Gemini, OpenAI, Claude)
 ├── elo_tracker.py              # Elo rating system with JSON persistence
 ├── finetune_pipeline.py        # PGN → JSONL fine-tuning dataset generator
-├── dashboard.py                # Flask web dashboard server
+├── dashboard.py                # Flask web dashboard server (settings, pause, import/export)
 ├── requirements.txt            # Python dependencies
 ├── training_data.pgn           # Generated — game records for fine-tuning
 ├── elo_history.json            # Generated — Elo rating history
 ├── game_state.json             # Generated — live board state for dashboard
+├── pause_flag.json             # Generated — pause/resume flag written by dashboard
+├── settings.json               # Generated — persisted UI settings (API keys, skill level, …)
 ├── finetune_data.jsonl         # Generated — fine-tuning dataset
 ├── CONTRIBUTING.md
 ├── LICENSE
@@ -413,7 +458,9 @@ These files are created automatically during a run and are **not** committed to 
 |------|-----------|-------------|
 | `training_data.pgn` | `cyberchess.py` | Accumulates completed games in PGN format for fine-tuning |
 | `elo_history.json` | `elo_tracker.py` | Persists the AI's Elo rating and per-game history across runs |
-| `game_state.json` | `cyberchess.py --dashboard` | Live board state polled by the web dashboard every 2 seconds |
+| `game_state.json` | `cyberchess.py --dashboard` | Live board state (FEN, move list, pause flag) polled by the web dashboard |
+| `pause_flag.json` | Dashboard `POST /api/pause` | Pause/resume signal written by the dashboard, read by `cyberchess.py` |
+| `settings.json` | Dashboard `POST /api/settings` | Persisted UI settings: skill level, LLM provider, API keys, etc. |
 | `finetune_data.jsonl` | `finetune_pipeline.py` | Fine-tuning dataset generated from `training_data.pgn` |
 
 ---
@@ -428,6 +475,11 @@ These files are created automatically during a run and are **not** committed to 
 - [x] Web dashboard — live board visualisation (`dashboard.py`)
 - [x] Support additional LLMs — GPT-4o, Claude, and any future provider (`llm_adapter.py`)
 - [x] In-browser About & Wiki pages — project overview and full documentation (`/about`, `/wiki`)
+- [x] Pause / Resume — freeze the arena mid-game from the browser
+- [x] Move list — live SAN move table on the dashboard
+- [x] PGN import / export — upload or download game files from the browser
+- [x] Settings panel — configure all options and enter API keys via the browser UI
+- [x] Matrix cyberpunk aesthetic — animated matrix rain, neon glow palette, CRT scanline overlay
 
 ---
 
@@ -450,7 +502,7 @@ $env:STOCKFISH_PATH = "C:\path\to\stockfish.exe"
 ```
 ValueError: GOOGLE_API_KEY is not set.
 ```
-Export the correct key for your chosen provider (see [Environment Variables](#-environment-variables)).
+Export the correct key for your chosen provider (see [Environment Variables](#-environment-variables)), or enter it in the **⚙ Settings** modal in the web dashboard.
 
 **`ImportError` for openai / anthropic**
 The `openai` and `anthropic` packages are optional.  Install them only if you need those providers:
@@ -469,6 +521,10 @@ pip install anthropic    # for --llm claude
 - The dashboard polls every 2 seconds; a slight delay is normal.
 - Check that both processes are running in the same working directory so they use the same `game_state.json`.
 
+**Game appears stuck / pause button has no effect**
+- The arena only checks the pause flag **between** moves, so it may take a few seconds to respond.
+- Verify both the arena and dashboard are running in the same working directory (same `pause_flag.json`).
+
 **Elo resets to 1200 after a run**
 `elo_history.json` is written to the current working directory.  Run both `cyberchess.py` and `finetune_pipeline.py` from the same directory, or set `ELO_FILE` to an absolute path.
 
@@ -483,3 +539,4 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
