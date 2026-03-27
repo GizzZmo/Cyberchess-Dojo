@@ -47,6 +47,25 @@ Every game is saved as a [PGN](https://en.wikipedia.org/wiki/Portable_Game_Notat
 
 ---
 
+## 📸 Screenshots
+
+### Dashboard — Live Board
+![Cyberchess Dojo dashboard showing the live board, Elo rating panel, move list, and current game info cards](https://github.com/user-attachments/assets/f013b802-4f1d-4090-b847-039f68b4203f)
+
+### Welcome Menu — Time Controls
+![Welcome menu modal with Classic, Rapid, and Lightning time control options](https://github.com/user-attachments/assets/ca249d3a-c766-46c5-8b3b-d2fcd7336aa1)
+
+### Settings Modal
+![Settings modal showing Stockfish skill slider, LLM provider selector, and API key fields](https://github.com/user-attachments/assets/730d2b92-847f-4e58-90a2-e14f7dc76a26)
+
+### About Page
+![About page with project description, key features grid, and technology stack table](https://github.com/user-attachments/assets/15bf432a-0217-4298-9855-90ed05698124)
+
+### Wiki Page
+![Wiki page with sidebar navigation, prerequisites table, and installation instructions](https://github.com/user-attachments/assets/165b4bc1-701e-427a-b1c3-413c10f3df5d)
+
+---
+
 ## 🤖 AI Agents & Orchestrator
 
 ### Specialised Agents (`agents/`)
