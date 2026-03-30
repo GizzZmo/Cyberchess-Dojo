@@ -1,6 +1,7 @@
 # ♟️ Cyberchess-Dojo
 
 [![CI](https://github.com/GizzZmo/Cyberchess-Dojo/actions/workflows/ci.yml/badge.svg)](https://github.com/GizzZmo/Cyberchess-Dojo/actions/workflows/ci.yml)
+[![AI Training Pipeline](https://github.com/GizzZmo/Cyberchess-Dojo/actions/workflows/train.yml/badge.svg)](https://github.com/GizzZmo/Cyberchess-Dojo/actions/workflows/train.yml)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Issues](https://img.shields.io/github/issues/GizzZmo/Cyberchess-Dojo)](https://github.com/GizzZmo/Cyberchess-Dojo/issues)
@@ -454,7 +455,8 @@ Cyberchess-Dojo/
 │   │   └── feature_request.md
 │   ├── pull_request_template.md
 │   └── workflows/
-│       └── ci.yml              # Lint + syntax check on every push/PR
+│       ├── ci.yml              # Lint + syntax check on every push/PR
+│       └── train.yml           # Automated AI training pipeline (manual + weekly schedule)
 ├── agents/
 │   ├── __init__.py             # Package exports
 │   ├── base_agent.py           # Shared base class (retry, UCI extraction, fallback)
@@ -488,6 +490,8 @@ Cyberchess-Dojo/
 
 ## 🛠️ CI / Workflow
 
+### Lint CI (`ci.yml`)
+
 The [CI workflow](.github/workflows/ci.yml) runs on every push and pull request to `main`/`master`:
 
 1. **Install** — `pip install -r requirements.txt` + `flake8`
@@ -496,6 +500,100 @@ The [CI workflow](.github/workflows/ci.yml) runs on every push and pull request 
 4. **AST parse check** — Verify the script can be parsed without executing it
 
 The matrix covers **Python 3.10, 3.11, and 3.12**.
+
+---
+
+## 🤖 AI Training Pipeline (`train.yml`)
+
+The [training workflow](.github/workflows/train.yml) automates end-to-end AI training: it plays games, tracks Elo, adapts difficulty, and generates a fine-tuning dataset — all with persistent state across runs.
+
+### Triggers
+
+| Trigger | Description |
+|---------|-------------|
+| **Manual** (`workflow_dispatch`) | Run from the **Actions** tab with full control over every parameter |
+| **Weekly schedule** | Automatically every Sunday at 02:00 UTC with default settings |
+
+### Configurable Inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `games` | `5` | Number of games to play |
+| `llm` | `gemini` | LLM provider: `gemini`, `openai`, or `claude` |
+| `model` | *(provider default)* | Model name override (e.g. `gpt-4o`, `claude-3-5-sonnet-20241022`) |
+| `skill` | `5` | Starting Stockfish skill level (0–20) |
+| `best_of_n` | `3` | LLM samples per move for best-of-N selection |
+| `time_control` | `rapid` | Time-control preset: `classic`, `rapid`, or `lightning` |
+| `all_moves` | `false` | Include White's moves in fine-tuning data (default: Black only) |
+
+### Required Secrets
+
+Set these in **Settings → Secrets and variables → Actions** for your repository:
+
+| Secret | Required for |
+|--------|-------------|
+| `GOOGLE_API_KEY` | `--llm gemini` |
+| `OPENAI_API_KEY` | `--llm openai` |
+| `ANTHROPIC_API_KEY` | `--llm claude` |
+
+Only the secret for the chosen provider needs to be set. The workflow validates this before running and fails fast with a clear error message if the secret is missing.
+
+### What It Does
+
+```
+1. Restore training state from cache
+   (elo_history.json, adaptive_progress.json, training_data.pgn)
+              ↓
+2. Install Stockfish (apt)
+              ↓
+3. Validate API key secret
+              ↓
+4. python cyberchess.py --games N --llm ... --skill ... (+ adaptive curriculum)
+              ↓
+5. python finetune_pipeline.py → finetune_data.jsonl
+              ↓
+6. Write GitHub Step Summary
+   (Elo table, adaptive plan, dataset stats)
+              ↓
+7. Save updated state back to cache
+              ↓
+8. Upload artefacts (PGN, JSONL, Elo history, adaptive progress)
+```
+
+### Training State Persistence
+
+The workflow uses `actions/cache` with branch-scoped keys so **Elo ratings and the adaptive curriculum carry over across runs**. Each new run restores the most recent cached state (PGN, Elo history, adaptive progress) before playing new games, then saves the updated state when done.
+
+### Concurrency Guard
+
+Only **one training run per branch** can execute at a time (`cancel-in-progress: false` ensures an in-flight run completes before a new one starts).
+
+### Artefacts
+
+Every run uploads a `training-run-<N>` artefact (90-day retention) containing:
+
+- `training_data.pgn` — accumulated game records
+- `finetune_data.jsonl` — fine-tuning dataset
+- `elo_history.json` — full Elo rating history
+- `adaptive_progress.json` — adaptive curriculum snapshots
+
+### Step Summary
+
+After each run, the **GitHub Step Summary** shows:
+
+- Run parameters table
+- Current Elo rating and last-10-games history table
+- Last adaptive curriculum plan (regime, skill, time, best-of-N)
+- Fine-tuning dataset statistics (total examples, by colour)
+
+### Quick Start — Running the Workflow Manually
+
+1. Go to **Actions → AI Training Pipeline** in the GitHub repository.
+2. Click **Run workflow**.
+3. Fill in the inputs (or leave defaults).
+4. Click **Run workflow** to start.
+
+> **Tip:** For the very first run, set `games` to a small number (e.g. `3`) to confirm your secrets are configured correctly.
 
 ---
 
@@ -543,6 +641,7 @@ These files are created automatically during a run and are **not** committed to 
 - [x] PGN import / export — upload or download game files from the browser
 - [x] Settings panel — configure all options and enter API keys via the browser UI
 - [x] Matrix cyberpunk aesthetic — animated matrix rain, neon glow palette, CRT scanline overlay
+- [x] Automated AI training pipeline — `train.yml` runs games, tracks Elo, adapts difficulty, and generates a fine-tuning dataset on a weekly schedule or on demand
 
 ---
 

@@ -47,6 +47,50 @@ Use the [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md) issue templ
 
 6. **Open a Pull Request** using the provided [PR template](.github/pull_request_template.md).
 
+---
+
+## 🤖 AI Training Pipeline
+
+The repository includes a fully automated training workflow at [`.github/workflows/train.yml`](.github/workflows/train.yml).
+
+### Running the Workflow
+
+Go to **Actions → AI Training Pipeline** → **Run workflow** and choose your parameters:
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `games` | `5` | Number of games |
+| `llm` | `gemini` | Provider: `gemini`, `openai`, or `claude` |
+| `model` | *(provider default)* | Model name override |
+| `skill` | `5` | Starting Stockfish skill (0–20) |
+| `best_of_n` | `3` | LLM samples per move |
+| `time_control` | `rapid` | `classic`, `rapid`, or `lightning` |
+| `all_moves` | `false` | Include both colours in the fine-tuning dataset |
+
+The workflow also runs automatically on a weekly schedule (Sundays at 02:00 UTC).
+
+### Required Secrets
+
+Set these in **Settings → Secrets and variables → Actions**:
+
+| Secret | Required for |
+|--------|-------------|
+| `GOOGLE_API_KEY` | `--llm gemini` |
+| `OPENAI_API_KEY` | `--llm openai` |
+| `ANTHROPIC_API_KEY` | `--llm claude` |
+
+### What the Workflow Produces
+
+Each run uploads a `training-run-<N>` artefact (90-day retention) containing:
+- `training_data.pgn` — all accumulated game records
+- `finetune_data.jsonl` — fine-tuning dataset (compatible with OpenAI, Vertex AI, Hugging Face)
+- `elo_history.json` — full Elo rating history
+- `adaptive_progress.json` — adaptive curriculum snapshots
+
+Training state (Elo, adaptive progress, PGN) is persisted in `actions/cache` so it accumulates across runs.
+
+See [README.md — AI Training Pipeline](README.md#-ai-training-pipeline-trainyml) for the full pipeline diagram and details.
+
 ## Code Style
 
 - Follow [PEP 8](https://peps.python.org/pep-0008/) with a max line length of **120 characters**.
