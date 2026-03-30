@@ -1,0 +1,336 @@
+name: AI Training Pipeline
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggers
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  # Run every Sunday at 02:00 UTC (uses defaults below).
+  schedule:
+    - cron: "0 2 * * 0"
+
+  # Fully configurable manual run.
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "Number of games to play"
+        required: false
+        default: "5"
+        type: string
+      llm:
+        description: "LLM provider (AI student)"
+        required: false
+        default: "gemini"
+        type: choice
+        options:
+          - gemini
+          - openai
+          - claude
+      model:
+        description: "Model name override (leave blank for provider default)"
+        required: false
+        default: ""
+        type: string
+      skill:
+        description: "Starting Stockfish skill level (0 = weakest … 20 = Grandmaster)"
+        required: false
+        default: "5"
+        type: string
+      best_of_n:
+        description: "LLM samples per move for best-of-N selection"
+        required: false
+        default: "3"
+        type: string
+      time_control:
+        description: "Time-control preset for Stockfish"
+        required: false
+        default: "rapid"
+        type: choice
+        options:
+          - classic
+          - rapid
+          - lightning
+      all_moves:
+        description: "Include both colours in fine-tuning dataset (default: Black only)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Concurrency — only one training run per branch at a time.
+# ─────────────────────────────────────────────────────────────────────────────
+concurrency:
+  group: training-${{ github.ref_name }}
+  cancel-in-progress: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  train:
+    name: >-
+      Train (${{ inputs.llm || 'gemini' }},
+      ${{ inputs.games || '5' }} games,
+      skill ${{ inputs.skill || '5' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Source code ───────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python + pip cache ────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 3. Stockfish ─────────────────────────────────────────────────────
+      - name: Install Stockfish
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y stockfish
+          SF_PATH="$(which stockfish)"
+          echo "STOCKFISH_PATH=${SF_PATH}" >> "$GITHUB_ENV"
+          echo "Stockfish installed at: ${SF_PATH}"
+          stockfish --version || true
+
+      # ── 4. Restore persisted training state ──────────────────────────────
+      - name: Restore training state
+        id: restore-state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            elo_history.json
+            adaptive_progress.json
+            training_data.pgn
+          # Unique key for this run; restore-keys falls back to most-recent.
+          key: training-state-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            training-state-${{ github.ref_name }}-
+
+      - name: Report restored state
+        run: |
+          {
+            echo "## Prior training state"
+            if [ -f elo_history.json ]; then
+              python - <<'PYEOF'
+          import json, sys
+          try:
+              with open("elo_history.json") as f:
+                  d = json.load(f)
+              print(f"- **Current Elo:** {d['current_elo']:.0f}")
+              print(f"- **Total games on record:** {len(d['history'])}")
+          except Exception as e:
+              print(f"Could not parse elo_history.json: {e}", file=sys.stderr)
+          PYEOF
+            else
+              echo "No previous state found — starting fresh."
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 5. Validate that the required API key secret is set ───────────────
+      - name: Validate API key availability
+        env:
+          SELECTED_LLM: ${{ inputs.llm || 'gemini' }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          case "$SELECTED_LLM" in
+            gemini)
+              if [ -z "$GOOGLE_API_KEY" ]; then
+                echo "::error::GOOGLE_API_KEY secret is not set. Add it in Settings → Secrets."
+                exit 1
+              fi
+              ;;
+            openai)
+              if [ -z "$OPENAI_API_KEY" ]; then
+                echo "::error::OPENAI_API_KEY secret is not set. Add it in Settings → Secrets."
+                exit 1
+              fi
+              ;;
+            claude)
+              if [ -z "$ANTHROPIC_API_KEY" ]; then
+                echo "::error::ANTHROPIC_API_KEY secret is not set. Add it in Settings → Secrets."
+                exit 1
+              fi
+              ;;
+          esac
+          echo "API key check passed for provider: $SELECTED_LLM"
+
+      # ── 6. Run training games ─────────────────────────────────────────────
+      - name: Run training games
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ARGS="--games ${{ inputs.games || '5' }}"
+          ARGS="$ARGS --llm ${{ inputs.llm || 'gemini' }}"
+          ARGS="$ARGS --skill ${{ inputs.skill || '5' }}"
+          ARGS="$ARGS --best-of-n ${{ inputs.best_of_n || '3' }}"
+          ARGS="$ARGS --time-control ${{ inputs.time_control || 'rapid' }}"
+          if [ -n "${{ inputs.model }}" ]; then
+            ARGS="$ARGS --model ${{ inputs.model }}"
+          fi
+          echo "Running: python cyberchess.py $ARGS"
+          # shellcheck disable=SC2086
+          python cyberchess.py $ARGS
+
+      # ── 7. Generate fine-tuning dataset ───────────────────────────────────
+      - name: Generate fine-tuning dataset
+        run: |
+          ARGS="--input training_data.pgn --output finetune_data.jsonl --metadata"
+          if [ "${{ inputs.all_moves }}" = "true" ]; then
+            ARGS="$ARGS --all-moves"
+          fi
+          echo "Running: python finetune_pipeline.py $ARGS"
+          # shellcheck disable=SC2086
+          python finetune_pipeline.py $ARGS
+
+      # ── 8. Write GitHub Step Summary ──────────────────────────────────────
+      - name: Write training summary
+        if: always()
+        run: |
+          python - <<'PYEOF'
+          import json, os, sys
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
+          lines = []
+
+          lines.append("## Training Run Summary\n")
+
+          # ── Parameters table ──────────────────────────────────────────────
+          lines.append("### Run parameters\n")
+          lines.append("| Parameter | Value |")
+          lines.append("|-----------|-------|")
+          params = [
+              ("LLM provider",     "${{ inputs.llm || 'gemini' }}"),
+              ("Model override",   "${{ inputs.model || '(default)' }}"),
+              ("Games played",     "${{ inputs.games || '5' }}"),
+              ("Stockfish skill",  "${{ inputs.skill || '5' }}"),
+              ("Best-of-N",        "${{ inputs.best_of_n || '3' }}"),
+              ("Time control",     "${{ inputs.time_control || 'rapid' }}"),
+              ("All moves",        "${{ inputs.all_moves || 'false' }}"),
+          ]
+          for name, val in params:
+              lines.append(f"| {name} | {val} |")
+          lines.append("")
+
+          # ── Elo summary ───────────────────────────────────────────────────
+          try:
+              with open("elo_history.json") as f:
+                  d = json.load(f)
+              history = d.get("history", [])
+              wins   = sum(1 for g in history if
+                           (g["result"] == "0-1" and g["ai_color"] == "black") or
+                           (g["result"] == "1-0" and g["ai_color"] == "white"))
+              draws  = sum(1 for g in history if g["result"] == "1/2-1/2")
+              losses = len(history) - wins - draws
+
+              lines.append("### Elo rating\n")
+              lines.append(f"**Current Elo:** {d['current_elo']:.0f}  ")
+              lines.append(f"**Total games:** {len(history)} "
+                           f"(W {wins} / D {draws} / L {losses})\n")
+
+              shown = history[-10:]
+              if shown:
+                  lines.append("**Last 10 games:**\n")
+                  lines.append("| # | Result | vs Skill | Elo before | Elo after | Δ Elo |")
+                  lines.append("|---|--------|----------|------------|-----------|-------|")
+                  for g in shown:
+                      sign = "+" if g["delta"] >= 0 else ""
+                      lines.append(
+                          f"| {g['game']} | {g['result']} | {g['stockfish_skill']} "
+                          f"| {g['elo_before']:.0f} | {g['elo_after']:.0f} "
+                          f"| {sign}{g['delta']:.0f} |"
+                      )
+                  lines.append("")
+          except FileNotFoundError:
+              lines.append("*elo_history.json not found — Elo data unavailable.*\n")
+          except Exception as e:
+              lines.append(f"*Could not read elo_history.json: {e}*\n")
+
+          # ── Adaptive plan ─────────────────────────────────────────────────
+          try:
+              with open("adaptive_progress.json") as f:
+                  ap = json.load(f)
+              ap_history = ap.get("history", [])
+              if ap_history:
+                  last = ap_history[-1]
+                  lines.append("### Adaptive curriculum (last plan)\n")
+                  lines.append("| Field | Value |")
+                  lines.append("|-------|-------|")
+                  lines.append(f"| Regime | {last.get('regime', '—')} |")
+                  lines.append(f"| Stockfish skill | {last.get('stockfish_skill', '—')} |")
+                  lines.append(f"| Stockfish time | {last.get('stockfish_time', '—')} s |")
+                  lines.append(f"| Best-of-N | {last.get('best_of_n', '—')} |")
+                  lines.append(f"| Recent score (smoothed) | {last.get('recent_score', '—')} |")
+                  lines.append("")
+          except FileNotFoundError:
+              pass
+          except Exception as e:
+              lines.append(f"*Could not read adaptive_progress.json: {e}*\n")
+
+          # ── Dataset stats ─────────────────────────────────────────────────
+          try:
+              sys.path.insert(0, ".")
+              from finetune_pipeline import pgn_to_training_examples
+              examples = pgn_to_training_examples("training_data.pgn", black_only=False)
+              if examples:
+                  games_set = {e["metadata"]["game"] for e in examples}
+                  black_ex  = [e for e in examples if e["metadata"]["color"] == "black"]
+                  white_ex  = [e for e in examples if e["metadata"]["color"] == "white"]
+                  lines.append("### Fine-tuning dataset\n")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| Total examples | {len(examples)} |")
+                  lines.append(f"| Unique games   | {len(games_set)} |")
+                  lines.append(f"| Black examples | {len(black_ex)} |")
+                  lines.append(f"| White examples | {len(white_ex)} |")
+                  lines.append("")
+          except FileNotFoundError:
+              lines.append("*training_data.pgn not found — dataset stats unavailable.*\n")
+          except Exception as e:
+              lines.append(f"*Could not generate dataset stats: {e}*\n")
+
+          with open(summary_path, "a") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PYEOF
+
+      # ── 9. Save updated training state to cache ───────────────────────────
+      - name: Save training state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            elo_history.json
+            adaptive_progress.json
+            training_data.pgn
+          key: training-state-${{ github.ref_name }}-${{ github.run_id }}
+
+      # ── 10. Upload all training artefacts ─────────────────────────────────
+      - name: Upload training artefacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-run-${{ github.run_number }}
+          path: |
+            training_data.pgn
+            finetune_data.jsonl
+            elo_history.json
+            adaptive_progress.json
+          if-no-files-found: warn
+          retention-days: 90
