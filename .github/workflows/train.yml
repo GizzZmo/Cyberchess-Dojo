@@ -31,7 +31,7 @@ on:
         default: ""
         type: string
       skill:
-        description: "Starting Stockfish skill level (0 = weakest … 20 = Grandmaster)"
+        description: "Starting Stockfish skill level (0 = weakest ... 20 = Grandmaster)"
         required: false
         default: "5"
         type: string
@@ -177,28 +177,32 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          ARGS="--games ${{ inputs.games || '5' }}"
-          ARGS="$ARGS --llm ${{ inputs.llm || 'gemini' }}"
-          ARGS="$ARGS --skill ${{ inputs.skill || '5' }}"
-          ARGS="$ARGS --best-of-n ${{ inputs.best_of_n || '3' }}"
-          ARGS="$ARGS --time-control ${{ inputs.time_control || 'rapid' }}"
+          TRAIN_ARGS=(
+            "--games"        "${{ inputs.games || '5' }}"
+            "--llm"          "${{ inputs.llm || 'gemini' }}"
+            "--skill"        "${{ inputs.skill || '5' }}"
+            "--best-of-n"    "${{ inputs.best_of_n || '3' }}"
+            "--time-control" "${{ inputs.time_control || 'rapid' }}"
+          )
           if [ -n "${{ inputs.model }}" ]; then
-            ARGS="$ARGS --model ${{ inputs.model }}"
+            TRAIN_ARGS+=("--model" "${{ inputs.model }}")
           fi
-          echo "Running: python cyberchess.py $ARGS"
-          # shellcheck disable=SC2086
-          python cyberchess.py $ARGS
+          echo "Running: python cyberchess.py ${TRAIN_ARGS[*]}"
+          python cyberchess.py "${TRAIN_ARGS[@]}"
 
       # ── 7. Generate fine-tuning dataset ───────────────────────────────────
       - name: Generate fine-tuning dataset
         run: |
-          ARGS="--input training_data.pgn --output finetune_data.jsonl --metadata"
+          FT_ARGS=(
+            "--input"  "training_data.pgn"
+            "--output" "finetune_data.jsonl"
+            "--metadata"
+          )
           if [ "${{ inputs.all_moves }}" = "true" ]; then
-            ARGS="$ARGS --all-moves"
+            FT_ARGS+=("--all-moves")
           fi
-          echo "Running: python finetune_pipeline.py $ARGS"
-          # shellcheck disable=SC2086
-          python finetune_pipeline.py $ARGS
+          echo "Running: python finetune_pipeline.py ${FT_ARGS[*]}"
+          python finetune_pipeline.py "${FT_ARGS[@]}"
 
       # ── 8. Write GitHub Step Summary ──────────────────────────────────────
       - name: Write training summary
