@@ -445,6 +445,20 @@ The format is compatible with:
 
 ---
 
+## 📥 External PGN Archive
+
+Download curated PGN sets locally (ignored by Git) with:
+
+```bash
+python scripts/download_pgn_archive.py
+```
+
+- Defaults: **top100_players**, **tournaments_2024**, **tournaments_2025** (PGN Mentor).
+- Use `--include` to pick specific sets, `--force` to re-download, and `--dest` to change the target folder (default: `pgn_archive`).
+- If a URL moves, supply your own with `--add-url NAME URL`.
+
+---
+
 ## 🗂️ Project Structure
 
 ```
@@ -474,6 +488,9 @@ Cyberchess-Dojo/
 ├── elo_tracker.py              # Elo rating system with JSON persistence
 ├── finetune_pipeline.py        # PGN → JSONL fine-tuning dataset generator
 ├── dashboard.py                # Flask web dashboard server (settings, pause, import/export)
+├── scripts/
+│   └── download_pgn_archive.py # Download PGN Mentor archives (Top100, tournaments 2024/2025)
+├── pgn_archive/                # Git-ignored storage for downloaded PGN archives (README + .gitkeep only)
 ├── requirements.txt            # Python dependencies
 ├── training_data.pgn           # Generated — game records for fine-tuning
 ├── elo_history.json            # Generated — Elo rating history

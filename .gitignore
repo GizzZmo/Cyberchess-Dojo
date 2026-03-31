@@ -11,3 +11,8 @@ env/
 
 # Generated game data
 training_data.pgn
+
+# Downloaded PGN archives
+pgn_archive/*
+!pgn_archive/.gitkeep
+!pgn_archive/README.md
