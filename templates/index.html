@@ -711,7 +711,7 @@ function renderMoveList(sanMoves) {
 // ─── Advantage meter & Stockfish lines ───────────────────────────────────────
 const MIN_EVAL_CP = -800;
 const MAX_EVAL_CP = 800;
-function renderInsights(state) {
+function renderAdvantageAndBestMoves(state) {
   const evalData = state?.evaluation;
   const best     = state?.best_moves || {};
 
@@ -734,7 +734,7 @@ function renderInsights(state) {
     }
   }
 
-  function renderList(list, elId) {
+  function renderBestMovesList(list, elId) {
     const target = document.getElementById(elId);
     if (!target) return;
     if (!list || !list.length) {
@@ -744,8 +744,8 @@ function renderInsights(state) {
     target.innerHTML = list.map((m, idx) => `<li>${idx + 1}. ${m.san || m.uci}</li>`).join('');
   }
 
-  renderList(best.white, 'white-best');
-  renderList(best.black, 'black-best');
+  renderBestMovesList(best.white, 'white-best');
+  renderBestMovesList(best.black, 'black-best');
 }
 
 // ─── Pause toggle ─────────────────────────────────────────────────────────────
@@ -932,7 +932,7 @@ async function poll() {
       setText('stat-black', stateRes.black_player ?? '—');
 
       renderMoveList(stateRes.san_moves || []);
-      renderInsights(stateRes);
+      renderAdvantageAndBestMoves(stateRes);
     }
 
     // Recent games

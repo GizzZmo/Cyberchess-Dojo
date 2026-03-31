@@ -214,7 +214,7 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         pass
 
     # Best moves for each color (treating each as the side to move).
-    def _top_moves_for(color: chess.Color) -> list[dict]:
+    def _get_top_moves_for_color(color: chess.Color) -> list[dict]:
         try:
             analysis_board = board.copy(stack=False)
             # Deliberately force side-to-move so we can surface options for each
@@ -239,8 +239,8 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         except (chess.engine.EngineError, chess.engine.EngineTerminatedError, ValueError):
             return []
 
-    insights["best_moves"]["white"] = _top_moves_for(chess.WHITE)
-    insights["best_moves"]["black"] = _top_moves_for(chess.BLACK)
+    insights["best_moves"]["white"] = _get_top_moves_for_color(chess.WHITE)
+    insights["best_moves"]["black"] = _get_top_moves_for_color(chess.BLACK)
     return insights
 
 
