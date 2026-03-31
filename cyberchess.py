@@ -205,6 +205,10 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
             if not pv:
                 continue
             move = pv[0]
+            if move not in analysis_board.legal_moves:
+                continue
+            # History is not required for these display moves; omit the stack
+            # to avoid unnecessary copying.
             temp_board = analysis_board.copy(stack=False)
             try:
                 san = temp_board.san(move)

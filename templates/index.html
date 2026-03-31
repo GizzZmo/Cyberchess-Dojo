@@ -523,7 +523,7 @@
       <span class="adv-marker left">White</span>
       <span class="adv-marker right">Black</span>
     </div>
-      <div class="adv-note">Stockfish suggestions show hypothetical options if that side moved next; some moves may be illegal in the current position.</div>
+      <div class="adv-note">Stockfish suggestions show theoretical options if that side were to move next; some moves may be illegal in the current position and are for study only.</div>
       <div class="best-moves">
         <div>
           <div class="best-title">White — Stockfish top 3</div>
@@ -738,7 +738,7 @@ function renderAdvantageAndBestMoves(state) {
     const pct    = ((capped - MIN_EVAL_CP) / pctRange) * 100;
     if (fillEl)  fillEl.style.width = `${pct}%`;
     if (scoreEl) {
-      const cpVal = (evalData.cp / CENTIPAWNS_PER_PAWN).toFixed(2);
+      const cpVal = (evalData.cp / CENTIPAWNS_PER_PAWN).toFixed(1);
       const text = formatEvaluationText(evalData, cpVal);
       const leader = evalData.leader === 'white' ? 'White' : evalData.leader === 'black' ? 'Black' : 'Equal';
       scoreEl.textContent = `${leader} • ${text}`;
