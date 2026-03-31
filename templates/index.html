@@ -709,6 +709,8 @@ function renderMoveList(sanMoves) {
 }
 
 // ─── Advantage meter & Stockfish lines ───────────────────────────────────────
+const MIN_EVAL_CP = -800;
+const MAX_EVAL_CP = 800;
 function renderInsights(state) {
   const evalData = state?.evaluation;
   const best     = state?.best_moves || {};
@@ -720,8 +722,9 @@ function renderInsights(state) {
     if (scoreEl) scoreEl.textContent = '—';
     if (fillEl)  fillEl.style.width = '50%';
   } else {
-    const capped = Math.max(-800, Math.min(800, evalData.cp));
-    const pct    = ((capped + 800) / 1600) * 100;
+    const capped = Math.max(MIN_EVAL_CP, Math.min(MAX_EVAL_CP, evalData.cp));
+    const pctRange = MAX_EVAL_CP - MIN_EVAL_CP;
+    const pct    = ((capped - MIN_EVAL_CP) / pctRange) * 100;
     if (fillEl)  fillEl.style.width = `${pct}%`;
     if (scoreEl) {
       const cpVal = (evalData.cp / 100).toFixed(2);

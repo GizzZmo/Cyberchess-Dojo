@@ -49,6 +49,10 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
 STOCKFISH_SKILL_LEVEL = 5       # 0 (weakest) – 20 (Grandmaster)
 STOCKFISH_TIME_LIMIT = 0.1      # seconds per move
 GEMINI_MODEL_NAME = "gemini-1.5-flash"
+MIN_ANALYSIS_TIME = 0.05
+MAX_ANALYSIS_TIME = 0.5
+MATE_SCORE_THRESHOLD = 100000
+ADVANTAGE_THRESHOLD_CP = 50
 
 # Number of independent LLM samples generated per move; the strongest
 # candidate is selected via a grandmaster ranking call (best-of-N sampling).
@@ -189,7 +193,7 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         "best_moves": {"white": [], "black": []},
     }
 
-    limit = chess.engine.Limit(time=max(0.05, min(analysis_time, 0.5)))
+    limit = chess.engine.Limit(time=max(MIN_ANALYSIS_TIME, min(analysis_time, MAX_ANALYSIS_TIME)))
 
     # Overall evaluation from the current side to move.
     try:
@@ -197,13 +201,13 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         score = info.get("score")
         if score:
             pov = score.pov(chess.WHITE)
-            cp = pov.score(mate_score=100000)
+            cp = pov.score(mate_score=MATE_SCORE_THRESHOLD)
             mate = pov.mate()
             leader = "equal"
             if cp is not None:
-                if cp > 50:
+                if cp > ADVANTAGE_THRESHOLD_CP:
                     leader = "white"
-                elif cp < -50:
+                elif cp < -ADVANTAGE_THRESHOLD_CP:
                     leader = "black"
             insights["evaluation"] = {"cp": cp, "mate": mate, "leader": leader}
     except Exception:
@@ -213,6 +217,8 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
     def _top_moves_for(color: chess.Color) -> list[dict]:
         try:
             analysis_board = board.copy(stack=False)
+            # Deliberately force side-to-move so we can surface options for each
+            # color, even if it's not their actual turn.
             analysis_board.turn = color
             lines = engine.analyse(analysis_board, limit, multipv=3)
             # Handle engines that return a single dict instead of a list for MultiPV.
