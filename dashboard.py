@@ -156,8 +156,18 @@ def wiki():
 def api_state():
     """Return the current live game state (written by cyberchess.py --dashboard)."""
     state = _read_json(_STATE_FILE)
+    # Provide advantage-meter fields even when the state file is missing or partial
+    # so the front-end meter/best-move lists can render safely.
+    defaults = {
+        "active": False,
+        "evaluation": None,
+        "best_moves": {"white": [], "black": []},
+    }
     if not state:
-        return jsonify({"active": False})
+        return jsonify(defaults)
+    # Ensure expected keys exist when an older or partial state file is loaded.
+    for key, value in defaults.items():
+        state.setdefault(key, value)
 
     fen       = state.get("fen")
     last_move = state.get("last_move")
