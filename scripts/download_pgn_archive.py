@@ -90,20 +90,33 @@ def save_raw(data: bytes, destination: Path, url: str, dataset: str) -> str:
     return str(output_path)
 
 
-def download_dataset(name: str, url: str, dest_root: Path, force: bool, timeout: int) -> Tuple[str, List[str]]:
+def has_existing_data(dataset_dir: Path) -> bool:
+    for path in dataset_dir.iterdir():
+        if path.name.startswith("."):
+            continue
+        if path.is_dir():
+            return True
+        if path.is_file():
+            return True
+    return False
+
+
+def download_dataset(
+    name: str, url: str, dest_root: Path, force: bool, timeout: int
+) -> Tuple[str, str, List[str]]:
     dataset_dir = dest_root / name
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    if not force and any(dataset_dir.iterdir()):
+    if not force and has_existing_data(dataset_dir):
         logging.info("Skipping %s (already present, use --force to re-download)", name)
-        return name, []
+        return name, "skipped", []
 
     logging.info("Downloading %s from %s", name, url)
     try:
         data = fetch_url(url, timeout=timeout)
     except urllib.error.URLError as exc:
         logging.error("Failed to download %s: %s", name, exc)
-        return name, []
+        return name, "failed", []
 
     files: List[str]
     if zipfile.is_zipfile(BytesIO(data)):
@@ -114,7 +127,7 @@ def download_dataset(name: str, url: str, dest_root: Path, force: bool, timeout:
         files = [saved]
         logging.info("Saved %s to %s", name, saved)
 
-    return name, files
+    return name, "downloaded", files
 
 
 def list_datasets(catalog: Dict[str, str]) -> None:
@@ -138,21 +151,38 @@ def main() -> int:
     dest_root.mkdir(parents=True, exist_ok=True)
 
     downloaded_any = False
+    skipped_any = False
+    failed_any = False
     for dataset in selected:
         url = catalog.get(dataset)
         if url is None:
             logging.warning("Dataset key '%s' not found; use --add-url to define it", dataset)
             continue
-        _, files = download_dataset(dataset, url, dest_root, args.force, args.timeout)
-        if files:
+        _, status, files = download_dataset(dataset, url, dest_root, args.force, args.timeout)
+        if status == "downloaded" and files:
             downloaded_any = True
+        elif status == "skipped":
+            skipped_any = True
+        elif status == "failed":
+            failed_any = True
 
-    if not downloaded_any:
-        logging.warning("No files downloaded. Check dataset keys or URLs.")
+    if failed_any:
+        if downloaded_any or skipped_any:
+            logging.warning("Completed with some failures; see log for details.")
+        else:
+            logging.warning("No files downloaded. Check dataset keys or URLs.")
         return 1
 
-    logging.info("Download complete.")
-    return 0
+    if downloaded_any:
+        logging.info("Download complete.")
+        return 0
+
+    if skipped_any:
+        logging.info("Datasets already present; nothing to do.")
+        return 0
+
+    logging.warning("No files downloaded. Check dataset keys or URLs.")
+    return 1
 
 
 if __name__ == "__main__":
