@@ -49,6 +49,10 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
 STOCKFISH_SKILL_LEVEL = 5       # 0 (weakest) – 20 (Grandmaster)
 STOCKFISH_TIME_LIMIT = 0.1      # seconds per move
 GEMINI_MODEL_NAME = "gemini-1.5-flash"
+MIN_ANALYSIS_TIME = 0.05
+MAX_ANALYSIS_TIME = 0.5
+MATE_SCORE_THRESHOLD = 100000
+ADVANTAGE_THRESHOLD_CP = 50
 
 # Number of independent LLM samples generated per move; the strongest
 # candidate is selected via a grandmaster ranking call (best-of-N sampling).
@@ -177,6 +181,78 @@ def _write_game_state(state: dict) -> None:
         pass
 
 
+def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, analysis_time: float) -> dict:
+    """
+    Return a lightweight Stockfish evaluation plus top 3 moves for both colors.
+
+    The analysis is intentionally shallow and time-limited so it can be invoked
+    on every ply without slowing the game loop.
+    """
+    insights = {
+        "evaluation": None,
+        "best_moves": {"white": [], "black": []},
+    }
+
+    clamped_time = min(max(analysis_time, MIN_ANALYSIS_TIME), MAX_ANALYSIS_TIME)
+    limit = chess.engine.Limit(time=clamped_time)
+
+    def _extract_moves(analysis_board: chess.Board, lines) -> list[dict]:
+        if isinstance(lines, dict):
+            lines = [lines]
+        best: list[dict] = []
+        for entry in lines:
+            pv = entry.get("pv")
+            if not pv:
+                continue
+            move = pv[0]
+            if move not in analysis_board.legal_moves:
+                continue
+            # History is not required for these display moves; omit the stack
+            # to avoid unnecessary copying.
+            temp_board = analysis_board.copy(stack=False)
+            try:
+                san = temp_board.san(move)
+            except (ValueError, chess.IllegalMoveError):
+                san = move.uci()
+            best.append({"uci": move.uci(), "san": san})
+        return best
+
+    # Evaluation and best lines for the actual side to move.
+    try:
+        primary = engine.analyse(board, limit, multipv=3)
+        primary_lines = primary if isinstance(primary, list) else [primary]
+        if primary_lines:
+            score = primary_lines[0].get("score")
+            if score:
+                pov = score.pov(chess.WHITE)
+                cp = pov.score(mate_score=MATE_SCORE_THRESHOLD)
+                mate = pov.mate()
+                leader = "equal"
+                if cp is not None:
+                    if cp > ADVANTAGE_THRESHOLD_CP:
+                        leader = "white"
+                    elif cp < -ADVANTAGE_THRESHOLD_CP:
+                        leader = "black"
+                insights["evaluation"] = {"cp": cp, "mate": mate, "leader": leader}
+            turn_key = "white" if board.turn == chess.WHITE else "black"
+            insights["best_moves"][turn_key] = _extract_moves(board, primary_lines)
+    except Exception as exc:  # pragma: no cover - runtime logging for diagnostics
+        print(f"[dashboard] Stockfish insight error (turn side): {exc}", file=sys.stderr)
+
+    # Hypothetical best lines for the opposite color (null move to switch turn when safe).
+    try:
+        if not board.is_check():
+            opp_board = board.copy(stack=False)
+            opp_board.push(chess.Move.null())
+            opposite = engine.analyse(opp_board, limit, multipv=3)
+            opp_key = "black" if board.turn == chess.WHITE else "white"
+            insights["best_moves"][opp_key] = _extract_moves(opp_board, opposite)
+    except Exception as exc:  # pragma: no cover - runtime logging for diagnostics
+        print(f"[dashboard] Stockfish insight error (opposite side): {exc}", file=sys.stderr)
+
+    return insights
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -285,6 +361,7 @@ def play_game(
                 else "endgame" if pc <= _ENDGAME_PIECE_THRESHOLD
                 else "middlegame"
             )
+            insights = _stockfish_insights(engine, board, stockfish_time)
             _write_game_state({
                 "active": True,
                 "paused": _is_paused(),
@@ -300,6 +377,8 @@ def play_game(
                 "white_player": white_label,
                 "black_player": black_label,
                 "san_moves": san_moves,
+                "evaluation": insights.get("evaluation"),
+                "best_moves": insights.get("best_moves"),
             })
 
         current_side = white_type if board.turn == chess.WHITE else black_type
@@ -326,6 +405,7 @@ def play_game(
 
     # Write final (inactive) state to the dashboard
     if live_dashboard:
+        insights = _stockfish_insights(engine, board, stockfish_time)
         _write_game_state({
             "active": False,
             "paused": False,
@@ -339,6 +419,8 @@ def play_game(
             "white_player": white_label,
             "black_player": black_label,
             "san_moves": san_moves,
+            "evaluation": insights.get("evaluation"),
+            "best_moves": insights.get("best_moves"),
         })
 
     return board, white_label, black_label
