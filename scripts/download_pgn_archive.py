@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 import zipfile
 
 
@@ -84,13 +85,16 @@ def extract_zip(data: bytes, destination: Path) -> List[str]:
 
 
 def save_raw(data: bytes, destination: Path, url: str, dataset: str) -> str:
-    filename = Path(url).name or f"{dataset}.pgn"
+    parsed = urlparse(url)
+    filename = Path(parsed.path).name or f"{dataset}.pgn"
     output_path = destination / filename
     output_path.write_bytes(data)
     return str(output_path)
 
 
 def has_existing_data(dataset_dir: Path) -> bool:
+    if not dataset_dir.exists():
+        return False
     for path in dataset_dir.iterdir():
         if path.name.startswith("."):
             continue
@@ -158,8 +162,8 @@ def main() -> int:
         if url is None:
             logging.warning("Dataset key '%s' not found; use --add-url to define it", dataset)
             continue
-        _, status, files = download_dataset(dataset, url, dest_root, args.force, args.timeout)
-        if status == "downloaded" and files:
+        _, status, _ = download_dataset(dataset, url, dest_root, args.force, args.timeout)
+        if status == "downloaded":
             downloaded_any = True
         elif status == "skipped":
             skipped_any = True
