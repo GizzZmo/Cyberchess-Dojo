@@ -242,7 +242,9 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
     # Hypothetical best lines for the opposite color (null move to switch turn when safe).
     try:
         if not board.is_check():
-            opp_board = board.copy(stack=False)
+            # Preserve move history so the UCI engine receives the full sequence
+            # (including when we inject a null move to flip the side to move).
+            opp_board = board.copy()
             opp_board.push(chess.Move.null())
             opposite = engine.analyse(opp_board, limit, multipv=3)
             opp_key = "black" if board.turn == chess.WHITE else "white"
