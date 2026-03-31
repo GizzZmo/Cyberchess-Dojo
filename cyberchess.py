@@ -223,8 +223,6 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
             # ignores tempo-dependent threats and should be treated as guidance
             # rather than a legally sequenced line.
             analysis_board.turn = color
-            if not analysis_board.is_valid():
-                return []
             lines = engine.analyse(analysis_board, limit, multipv=3)
             # Handle engines that return a single dict instead of a list for MultiPV.
             if isinstance(lines, dict):
