@@ -196,6 +196,22 @@
     .move-w { color: #e8e8e8; }
     .move-b { color: var(--neon); }
 
+    /* ── Advantage meter & best moves ─────────────────────────────────── */
+    .adv-panel { margin-top: 0.8rem; background: rgba(13,34,68,0.3); border: 1px solid var(--bg-border); border-radius: 6px; padding: 0.75rem; }
+    .adv-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--dim); margin-bottom: 0.4rem; }
+    .adv-score { color: var(--text); font-weight: 700; }
+    .adv-bar { position: relative; height: 14px; background: rgba(13,34,68,0.8); border: 1px solid var(--bg-border); border-radius: 999px; overflow: hidden; }
+    .adv-fill { position: absolute; top: 0; left: 0; height: 100%; width: 50%; background: linear-gradient(90deg, rgba(233,69,96,0.5), rgba(78,204,163,0.8)); transition: width 0.25s ease; }
+    .adv-marker { position: absolute; top: -18px; font-size: 0.7rem; color: var(--dim); }
+    .adv-marker.left { left: 0; }
+    .adv-marker.right { right: 0; }
+    .best-moves { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-top: 0.6rem; }
+    .best-title { font-size: 0.78rem; color: var(--dim); margin-bottom: 0.2rem; letter-spacing: 0.5px; }
+    .best-list { list-style: none; font-size: 0.82rem; color: var(--text); padding-left: 0; }
+    .best-list li { padding: 0.12rem 0; border-bottom: 1px dashed rgba(13,34,68,0.6); }
+    .best-list li:last-child { border-bottom: none; }
+    @media (max-width: 640px) { .best-moves { grid-template-columns: 1fr; } }
+
     /* ── Game log ───────────────────────────────────────────────────── */
     #game-log { max-height: 200px; overflow-y: auto; font-size: 0.78rem; font-family: 'Courier New', Courier, monospace; }
     .log-entry { padding: 0.2rem 0; border-bottom: 1px solid rgba(13,34,68,0.5); }
@@ -496,6 +512,27 @@
     </div>
     <div id="board-svg"><p class="placeholder">Waiting for game data…</p></div>
     <div id="move-info"></div>
+    <div class="adv-panel">
+      <div class="adv-header">
+        <span>Advantage meter</span>
+        <span class="adv-score" id="adv-score">—</span>
+      </div>
+      <div class="adv-bar" aria-label="Evaluation meter">
+        <div class="adv-fill" id="adv-fill"></div>
+        <span class="adv-marker left">White</span>
+        <span class="adv-marker right">Black</span>
+      </div>
+      <div class="best-moves">
+        <div>
+          <div class="best-title">White — Stockfish top 3</div>
+          <ul id="white-best" class="best-list"><li class="placeholder">Waiting…</li></ul>
+        </div>
+        <div>
+          <div class="best-title">Black — Stockfish top 3</div>
+          <ul id="black-best" class="best-list"><li class="placeholder">Waiting…</li></ul>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Elo -->
@@ -669,6 +706,42 @@ function renderMoveList(sanMoves) {
   // Scroll to the bottom so the latest move is visible.
   const body = document.getElementById('move-list-body');
   if (body) body.scrollTop = body.scrollHeight;
+}
+
+// ─── Advantage meter & Stockfish lines ───────────────────────────────────────
+function renderInsights(state) {
+  const evalData = state?.evaluation;
+  const best     = state?.best_moves || {};
+
+  const scoreEl = document.getElementById('adv-score');
+  const fillEl  = document.getElementById('adv-fill');
+
+  if (!evalData || evalData.cp === null || evalData.cp === undefined) {
+    if (scoreEl) scoreEl.textContent = '—';
+    if (fillEl)  fillEl.style.width = '50%';
+  } else {
+    const capped = Math.max(-800, Math.min(800, evalData.cp));
+    const pct    = ((capped + 800) / 1600) * 100;
+    if (fillEl)  fillEl.style.width = `${pct}%`;
+    if (scoreEl) {
+      const text = evalData.mate ? `Mate in ${evalData.mate}` : `${(evalData.cp / 100).toFixed(2)} (cp)`;
+      const leader = evalData.leader === 'white' ? 'White' : evalData.leader === 'black' ? 'Black' : 'Equal';
+      scoreEl.textContent = `${leader} • ${text}`;
+    }
+  }
+
+  function renderList(list, elId) {
+    const target = document.getElementById(elId);
+    if (!target) return;
+    if (!list || !list.length) {
+      target.innerHTML = '<li class="placeholder">No data</li>';
+      return;
+    }
+    target.innerHTML = list.map((m, idx) => `<li>${idx + 1}. ${m.san || m.uci}</li>`).join('');
+  }
+
+  renderList(best.white, 'white-best');
+  renderList(best.black, 'black-best');
 }
 
 // ─── Pause toggle ─────────────────────────────────────────────────────────────
@@ -855,6 +928,7 @@ async function poll() {
       setText('stat-black', stateRes.black_player ?? '—');
 
       renderMoveList(stateRes.san_moves || []);
+      renderInsights(stateRes);
     }
 
     // Recent games

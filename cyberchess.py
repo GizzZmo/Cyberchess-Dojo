@@ -177,6 +177,66 @@ def _write_game_state(state: dict) -> None:
         pass
 
 
+def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, analysis_time: float) -> dict:
+    """
+    Return a lightweight Stockfish evaluation plus top 3 moves for both colors.
+
+    The analysis is intentionally shallow and time-limited so it can be invoked
+    on every ply without slowing the game loop.
+    """
+    insights = {
+        "evaluation": None,
+        "best_moves": {"white": [], "black": []},
+    }
+
+    limit = chess.engine.Limit(time=max(0.05, min(analysis_time, 0.5)))
+
+    # Overall evaluation from the current side to move.
+    try:
+        info = engine.analyse(board, limit, multipv=1)
+        score = info.get("score")
+        if score:
+            pov = score.pov(chess.WHITE)
+            cp = pov.score(mate_score=100000)
+            mate = pov.mate()
+            leader = "equal"
+            if cp is not None:
+                if cp > 50:
+                    leader = "white"
+                elif cp < -50:
+                    leader = "black"
+            insights["evaluation"] = {"cp": cp, "mate": mate, "leader": leader}
+    except Exception:
+        pass
+
+    # Best moves for each color (treating each as the side to move).
+    def _top_moves_for(color: chess.Color) -> list[dict]:
+        try:
+            analysis_board = board.copy(stack=False)
+            analysis_board.turn = color
+            lines = engine.analyse(analysis_board, limit, multipv=3)
+            if isinstance(lines, dict):  # pragma: no cover - defensive
+                lines = [lines]
+            best: list[dict] = []
+            for entry in lines:
+                pv = entry.get("pv")
+                if not pv:
+                    continue
+                move = pv[0]
+                try:
+                    san = analysis_board.san(move)
+                except Exception:
+                    san = move.uci()
+                best.append({"uci": move.uci(), "san": san})
+            return best
+        except Exception:
+            return []
+
+    insights["best_moves"]["white"] = _top_moves_for(chess.WHITE)
+    insights["best_moves"]["black"] = _top_moves_for(chess.BLACK)
+    return insights
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -285,6 +345,7 @@ def play_game(
                 else "endgame" if pc <= _ENDGAME_PIECE_THRESHOLD
                 else "middlegame"
             )
+            insights = _stockfish_insights(engine, board, stockfish_time)
             _write_game_state({
                 "active": True,
                 "paused": _is_paused(),
@@ -300,6 +361,8 @@ def play_game(
                 "white_player": white_label,
                 "black_player": black_label,
                 "san_moves": san_moves,
+                "evaluation": insights.get("evaluation"),
+                "best_moves": insights.get("best_moves"),
             })
 
         current_side = white_type if board.turn == chess.WHITE else black_type
@@ -326,6 +389,7 @@ def play_game(
 
     # Write final (inactive) state to the dashboard
     if live_dashboard:
+        insights = _stockfish_insights(engine, board, stockfish_time)
         _write_game_state({
             "active": False,
             "paused": False,
@@ -339,6 +403,8 @@ def play_game(
             "white_player": white_label,
             "black_player": black_label,
             "san_moves": san_moves,
+            "evaluation": insights.get("evaluation"),
+            "best_moves": insights.get("best_moves"),
         })
 
     return board, white_label, black_label
