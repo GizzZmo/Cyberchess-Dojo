@@ -523,7 +523,7 @@
       <span class="adv-marker left">White</span>
       <span class="adv-marker right">Black</span>
     </div>
-      <div class="adv-note">Stockfish suggestions show candidate moves for each side independently; actual tempo and tactical threats may differ.</div>
+      <div class="adv-note">Stockfish suggestions show hypothetical options if that side moved next; some moves may be illegal in the current position.</div>
       <div class="best-moves">
         <div>
           <div class="best-title">White — Stockfish top 3</div>
@@ -748,11 +748,19 @@ function renderAdvantageAndBestMoves(state) {
   function renderBestMovesList(list, elId) {
     const target = document.getElementById(elId);
     if (!target) return;
+    target.innerHTML = '';
     if (!list || !list.length) {
-      target.innerHTML = '<li class="placeholder">No data</li>';
+      const li = document.createElement('li');
+      li.className = 'placeholder';
+      li.textContent = 'No data';
+      target.appendChild(li);
       return;
     }
-    target.innerHTML = list.map((m, idx) => `<li>${idx + 1}. ${m.san || m.uci}</li>`).join('');
+    list.forEach((m, idx) => {
+      const li = document.createElement('li');
+      li.textContent = `${idx + 1}. ${m.san || m.uci}`;
+      target.appendChild(li);
+    });
   }
 
   renderBestMovesList(best.white, 'white-best');
