@@ -215,7 +215,8 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
             analysis_board = board.copy(stack=False)
             analysis_board.turn = color
             lines = engine.analyse(analysis_board, limit, multipv=3)
-            if isinstance(lines, dict):  # pragma: no cover - defensive
+            # Handle engines that return a single dict instead of a list for MultiPV.
+            if isinstance(lines, dict):
                 lines = [lines]
             best: list[dict] = []
             for entry in lines:
@@ -225,11 +226,11 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
                 move = pv[0]
                 try:
                     san = analysis_board.san(move)
-                except Exception:
+                except (ValueError, chess.IllegalMoveError):
                     san = move.uci()
                 best.append({"uci": move.uci(), "san": san})
             return best
-        except Exception:
+        except (chess.engine.EngineError, chess.engine.EngineTerminatedError, ValueError):
             return []
 
     insights["best_moves"]["white"] = _top_moves_for(chess.WHITE)
