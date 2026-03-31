@@ -61,7 +61,9 @@ def pgn_to_training_examples(
     """
     examples: list[dict] = []
 
-    with open(pgn_path) as f:
+    # Explicit UTF-8 decoding avoids Windows locale defaults (e.g., cp1252) that
+    # can choke on non-ASCII player names in PGN files.
+    with open(pgn_path, encoding="utf-8", errors="replace") as f:
         game_index = 0
         while True:
             game = chess.pgn.read_game(f)
@@ -117,7 +119,7 @@ def write_jsonl(
     include_metadata: bool = False,
 ) -> None:
     """Write training examples to a JSONL file (one JSON object per line)."""
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         for ex in examples:
             record: dict = {"prompt": ex["prompt"], "completion": ex["completion"]}
             if include_metadata:
