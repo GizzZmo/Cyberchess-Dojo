@@ -214,11 +214,13 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         pass
 
     # Best moves for each color (treating each as the side to move).
-    def _get_top_moves_for_color(color: chess.Color) -> list[dict]:
+    def _top_moves(color: chess.Color) -> list[dict]:
         try:
             analysis_board = board.copy(stack=False)
             # Deliberately force side-to-move so we can surface options for each
-            # color, even if it's not their actual turn.
+            # color, even if it's not their actual turn. This intentionally
+            # ignores tempo-dependent threats and should be treated as guidance
+            # rather than a legally sequenced line.
             analysis_board.turn = color
             lines = engine.analyse(analysis_board, limit, multipv=3)
             # Handle engines that return a single dict instead of a list for MultiPV.
@@ -239,8 +241,8 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         except (chess.engine.EngineError, chess.engine.EngineTerminatedError, ValueError):
             return []
 
-    insights["best_moves"]["white"] = _get_top_moves_for_color(chess.WHITE)
-    insights["best_moves"]["black"] = _get_top_moves_for_color(chess.BLACK)
+    insights["best_moves"]["white"] = _top_moves(chess.WHITE)
+    insights["best_moves"]["black"] = _top_moves(chess.BLACK)
     return insights
 
 
