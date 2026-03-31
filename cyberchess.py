@@ -220,8 +220,9 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
             analysis_board = board.copy(stack=False)
             # Deliberately force side-to-move so we can surface options for each
             # color, even if it's not their actual turn. This intentionally
-            # ignores tempo-dependent threats and should be treated as guidance
-            # rather than a legally sequenced line.
+            # ignores tempo-dependent threats and can surface ideas that are
+            # illegal in the actual move order. Treat as educational guidance,
+            # not a legally sequenced line.
             analysis_board.turn = color
             lines = engine.analyse(analysis_board, limit, multipv=3)
             # Handle engines that return a single dict instead of a list for MultiPV.

@@ -523,7 +523,7 @@
       <span class="adv-marker left">White</span>
       <span class="adv-marker right">Black</span>
     </div>
-      <div class="adv-note">Stockfish suggestions show ideas for each side independently; tempo/threat context is approximated.</div>
+      <div class="adv-note">Stockfish suggestions show candidate moves for each side independently; actual tempo and tactical threats may differ.</div>
       <div class="best-moves">
         <div>
           <div class="best-title">White — Stockfish top 3</div>
@@ -713,6 +713,7 @@ function renderMoveList(sanMoves) {
 // ─── Advantage meter & Stockfish lines ───────────────────────────────────────
 const MIN_EVAL_CP = -800;
 const MAX_EVAL_CP = 800;
+const CENTIPAWNS_PER_PAWN = 100;
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 function formatEvaluationText(evalData, cpVal) {
@@ -737,7 +738,7 @@ function renderAdvantageAndBestMoves(state) {
     const pct    = ((capped - MIN_EVAL_CP) / pctRange) * 100;
     if (fillEl)  fillEl.style.width = `${pct}%`;
     if (scoreEl) {
-      const cpVal = (evalData.cp / 100).toFixed(2);
+      const cpVal = (evalData.cp / CENTIPAWNS_PER_PAWN).toFixed(2);
       const text = formatEvaluationText(evalData, cpVal);
       const leader = evalData.leader === 'white' ? 'White' : evalData.leader === 'black' ? 'Black' : 'Equal';
       scoreEl.textContent = `${leader} • ${text}`;
