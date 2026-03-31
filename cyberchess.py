@@ -193,7 +193,8 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
         "best_moves": {"white": [], "black": []},
     }
 
-    limit = chess.engine.Limit(time=max(MIN_ANALYSIS_TIME, min(analysis_time, MAX_ANALYSIS_TIME)))
+    clamped_time = min(max(analysis_time, MIN_ANALYSIS_TIME), MAX_ANALYSIS_TIME)
+    limit = chess.engine.Limit(time=clamped_time)
 
     # Overall evaluation from the current side to move.
     try:
@@ -222,6 +223,8 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
             # ignores tempo-dependent threats and should be treated as guidance
             # rather than a legally sequenced line.
             analysis_board.turn = color
+            if not analysis_board.is_valid():
+                return []
             lines = engine.analyse(analysis_board, limit, multipv=3)
             # Handle engines that return a single dict instead of a list for MultiPV.
             if isinstance(lines, dict):
@@ -238,7 +241,7 @@ def _stockfish_insights(engine: chess.engine.SimpleEngine, board: chess.Board, a
                     san = move.uci()
                 best.append({"uci": move.uci(), "san": san})
             return best
-        except (chess.engine.EngineError, chess.engine.EngineTerminatedError, ValueError):
+        except (chess.engine.EngineError, chess.engine.EngineTerminatedError):
             return []
 
     insights["best_moves"]["white"] = _top_moves(chess.WHITE)
