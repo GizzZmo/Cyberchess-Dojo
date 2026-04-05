@@ -142,36 +142,50 @@ jobs:
 
       # ── 5. Validate that the required API key secret is set ───────────────
       - name: Validate API key availability
+        id: api-key-check
         env:
           SELECTED_LLM: ${{ inputs.llm || 'gemini' }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          missing_reason=""
           case "$SELECTED_LLM" in
             gemini)
               if [ -z "$GOOGLE_API_KEY" ]; then
-                echo "::error::GOOGLE_API_KEY secret is not set. Add it in Settings → Secrets."
-                exit 1
+                missing_reason="GOOGLE_API_KEY secret is not set. Add it in Settings → Secrets."
               fi
               ;;
             openai)
               if [ -z "$OPENAI_API_KEY" ]; then
-                echo "::error::OPENAI_API_KEY secret is not set. Add it in Settings → Secrets."
-                exit 1
+                missing_reason="OPENAI_API_KEY secret is not set. Add it in Settings → Secrets."
               fi
               ;;
             claude)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
-                echo "::error::ANTHROPIC_API_KEY secret is not set. Add it in Settings → Secrets."
-                exit 1
+                missing_reason="ANTHROPIC_API_KEY secret is not set. Add it in Settings → Secrets."
               fi
               ;;
           esac
+
+          if [ -n "$missing_reason" ]; then
+            echo "skip_training=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::$missing_reason Skipping training run."
+            {
+              echo "## Training skipped"
+              echo "- Provider: $SELECTED_LLM"
+              echo "- Reason: $missing_reason"
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "skip_training=false" >> "$GITHUB_OUTPUT"
           echo "API key check passed for provider: $SELECTED_LLM"
 
       # ── 6. Run training games ─────────────────────────────────────────────
       - name: Run training games
+        if: steps.api-key-check.outputs.skip_training != 'true'
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -192,6 +206,7 @@ jobs:
 
       # ── 7. Generate fine-tuning dataset ───────────────────────────────────
       - name: Generate fine-tuning dataset
+        if: steps.api-key-check.outputs.skip_training != 'true'
         run: |
           FT_ARGS=(
             "--input"  "training_data.pgn"
@@ -317,7 +332,7 @@ jobs:
       # ── 9. Save updated training state to cache ───────────────────────────
       - name: Save training state
         uses: actions/cache/save@v4
-        if: always()
+        if: always() && steps.api-key-check.outputs.skip_training != 'true'
         with:
           path: |
             elo_history.json
@@ -328,7 +343,7 @@ jobs:
       # ── 10. Upload all training artefacts ─────────────────────────────────
       - name: Upload training artefacts
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.api-key-check.outputs.skip_training != 'true'
         with:
           name: training-run-${{ github.run_number }}
           path: |
