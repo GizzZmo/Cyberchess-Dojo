@@ -291,12 +291,15 @@
           <ul>
             <li><a href="#agents" class="sub">AI Agents</a></li>
             <li><a href="#orchestrator" class="sub">Orchestrator</a></li>
+            <li><a href="#peace-protocol" class="sub">Peace Protocol</a></li>
+            <li><a href="#transposition-table" class="sub">Transposition Table</a></li>
             <li><a href="#llm-adapter" class="sub">LLM Adapter</a></li>
           </ul>
         </li>
         <li><a href="#elo">Elo Tracking</a></li>
         <li><a href="#dashboard">Web Dashboard</a>
           <ul>
+            <li><a href="#theme-builder" class="sub">Theme Builder</a></li>
             <li><a href="#dashboard-api" class="sub">API Endpoints</a></li>
           </ul>
         </li>
@@ -475,12 +478,65 @@ python cyberchess.py --llm claude --model claude-3-haiku-20240307</code></pre>
       When candidates disagree, the orchestrator still performs a final grandmaster-style ranking call to synthesise the strongest move.
     </p>
 
+    <h3 id="peace-protocol">Peace Protocol — Hybrid Search-Transformer Engine</h3>
+    <p>
+      <code>search_engine.py</code> implements <code>PeaceProtocolEngine</code>, an opt-in
+      upgrade to best-of-N sampling that combines LLM strategic intuition with a classical
+      alpha-beta search tree.
+    </p>
+    <ol>
+      <li><strong>Policy query</strong> — The LLM is called <em>once</em> per root position and asked
+        to name its top-N "humanly logical" candidate moves.</li>
+      <li><strong>Guided move ordering</strong> — Those moves are sorted first in the tree
+        (before captures, then checks), reducing the effective branching factor from ~35 to ~3.</li>
+      <li><strong>Negamax alpha-beta</strong> — Standard recursive search with alpha-beta pruning.</li>
+      <li><strong>Transposition table</strong> — Previously evaluated positions are cached so they
+        are never re-searched across branches or moves.</li>
+      <li><strong>Static leaf evaluation</strong> — Quiet leaf nodes use material balance plus
+        PeSTO piece-square tables; no extra LLM call is made at every node.</li>
+    </ol>
+    <p>Enable it by passing <code>use_peace_protocol=True</code> to <code>get_best_move()</code>:</p>
+    <pre><code>move = orchestrator.get_best_move(board, use_peace_protocol=True)</code></pre>
+    <p>
+      The opening phase always uses theory / OpeningAgent regardless of this flag.
+    </p>
+
+    <h3 id="transposition-table">Transposition Table</h3>
+    <p>
+      <code>transposition_table.py</code> provides <code>TranspositionTable</code>: a FEN-keyed
+      position cache used by <code>PeaceProtocolEngine</code> to avoid re-computing the same
+      position across different branches or across moves within the same game.
+    </p>
+    <table>
+      <thead><tr><th>Feature</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td>Keys</td><td>FEN strings (board + side to move + castling + en passant)</td></tr>
+        <tr><td>Values</td><td>Score, search depth, best move, and a bound flag</td></tr>
+        <tr><td>Replacement policy</td><td>Depth-preferred — a shallower result never evicts a deeper one</td></tr>
+        <tr><td>Flags</td><td><code>TTFlag.EXACT</code>, <code>TTFlag.LOWER</code> (beta-cutoff), <code>TTFlag.UPPER</code> (all-node)</td></tr>
+        <tr><td>Capacity</td><td>Configurable <code>max_size</code>; FIFO eviction when full</td></tr>
+        <tr><td>Diagnostics</td><td><code>tt.hit_rate()</code>, <code>tt.size</code>, <code>tt.stores</code></td></tr>
+      </tbody>
+    </table>
+
     <h3 id="llm-adapter">LLM Adapter</h3>
     <p>
       <code>llm_adapter.py</code> exposes a single <code>LLMAdapter</code> class. Select
       the provider at instantiation time; all agents and the orchestrator call only
-      <code>adapter.generate(prompt)</code>, making the underlying model completely
+      <code>adapter.generate_content(prompt)</code>, making the underlying model completely
       interchangeable.
+    </p>
+    <p>
+      An optional <code>temperature</code> argument controls response randomness:
+    </p>
+    <pre><code># Defensive/stable — deterministic output
+response = adapter.generate_content(prompt, temperature=0.1)
+
+# Attacking/creative — more surprising moves
+response = adapter.generate_content(prompt, temperature=1.2)</code></pre>
+    <p>
+      When <code>temperature</code> is omitted the provider's default is used, so existing
+      code requires no changes.
     </p>
 
     <!-- ------------------------------------------------------------------ -->
@@ -526,6 +582,35 @@ python dashboard.py
     <p>The board updates automatically every 2 seconds. Custom host/port:</p>
     <pre><code>python dashboard.py --host 0.0.0.0 --port 8080</code></pre>
 
+    <h3 id="theme-builder">🎨 Theme Builder</h3>
+    <p>
+      Click <strong>🎨 Theme</strong> in the navigation bar to open the Theme Builder modal.
+    </p>
+    <h4>Preset palettes</h4>
+    <table>
+      <thead><tr><th>Preset</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Cyberpunk</strong></td><td>Original dark blue with neon green and red (default)</td></tr>
+        <tr><td><strong>Matrix</strong></td><td>Deep black with Matrix-green monochrome accents</td></tr>
+        <tr><td><strong>Ocean</strong></td><td>Midnight navy with electric cyan and teal</td></tr>
+        <tr><td><strong>Crimson</strong></td><td>Dark red-black with fiery orange and amber</td></tr>
+        <tr><td><strong>Void</strong></td><td>Near-black with violet and magenta neon</td></tr>
+      </tbody>
+    </table>
+    <h4>Custom colours</h4>
+    <p>
+      Every CSS variable can be overridden independently using a colour picker:
+      <code>Background</code>, <code>Card BG</code>, <code>Border</code>, <code>Accent</code>,
+      <code>Neon</code>, <code>Neon 2</code>, <code>Dim</code>, <code>Text</code>, <code>Matrix</code>.
+      A live swatch preview updates instantly.
+    </p>
+    <ul>
+      <li><strong>Apply &amp; Save</strong> — persists to <code>settings.json</code> via
+        <code>POST /api/theme</code> and stores in <code>localStorage</code> so the About and Wiki
+        pages also pick it up.</li>
+      <li><strong>Reset to Default</strong> — clears all overrides and restores the Cyberpunk palette.</li>
+    </ul>
+
     <h3 id="dashboard-api">API Endpoints</h3>
     <table>
       <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
@@ -536,6 +621,8 @@ python dashboard.py
         <tr><td><code>GET /api/state</code></td><td>Current board state (FEN, phase, last move) as JSON</td></tr>
         <tr><td><code>GET /api/elo</code></td><td>Full Elo history as JSON</td></tr>
         <tr><td><code>GET /api/games</code></td><td>Completed games parsed from <code>training_data.pgn</code></td></tr>
+        <tr><td><code>GET /api/theme</code></td><td>Active theme overrides and all preset palettes</td></tr>
+        <tr><td><code>POST /api/theme</code></td><td>Apply a preset, save custom overrides, or reset to defaults</td></tr>
       </tbody>
     </table>
 
@@ -589,19 +676,24 @@ python finetune_pipeline.py --metadata</code></pre>
 │   ├── positional_agent.py     # Positional / strategic specialist
 │   └── endgame_agent.py        # Endgame technique specialist
 ├── templates/
-│   ├── index.html              # Web dashboard (served by dashboard.py)
+│   ├── index.html              # Web dashboard (served by dashboard.py) + Theme Builder
 │   ├── about.html              # About page
 │   └── wiki.html               # This wiki page
-├── orchestrator.py             # ChessOrchestrator — routes board states to agents
+├── tests/
+│   └── test_search_engine.py   # Unit tests for TranspositionTable and PeaceProtocolEngine
+├── orchestrator.py             # ChessOrchestrator — routes board states to agents + Peace Protocol
+├── search_engine.py            # PeaceProtocolEngine — alpha-beta + LLM policy priors
+├── transposition_table.py      # TranspositionTable — FEN-keyed position cache
 ├── cyberchess.py               # Main arena script (loop mode, Elo, dashboard)
-├── llm_adapter.py              # Unified LLM interface (Gemini, OpenAI, Claude)
+├── llm_adapter.py              # Unified LLM interface (Gemini, OpenAI, Claude + temperature)
 ├── elo_tracker.py              # Elo rating system with JSON persistence
 ├── finetune_pipeline.py        # PGN → JSONL fine-tuning dataset generator
-├── dashboard.py                # Flask web dashboard server
+├── dashboard.py                # Flask web dashboard server (settings, pause, import/export, theme API)
 ├── requirements.txt            # Python dependencies
 ├── training_data.pgn           # Generated — game records for fine-tuning
 ├── elo_history.json            # Generated — Elo rating history
 ├── game_state.json             # Generated — live board state for dashboard
+├── settings.json               # Generated — persisted UI settings (API keys, skill level, theme, …)
 ├── finetune_data.jsonl         # Generated — fine-tuning dataset
 ├── CONTRIBUTING.md
 ├── LICENSE
@@ -686,6 +778,20 @@ export STOCKFISH_PATH="/opt/homebrew/bin/stockfish"</code></pre>
 </footer>
 
 <script>
+// ─── Theme: apply saved theme from localStorage ───────────────────────────
+(function () {
+  const _TV = [
+    ['--bg', 'bg'], ['--bg-card', 'bg_card'], ['--bg-border', 'bg_border'],
+    ['--accent', 'accent'], ['--neon', 'neon'], ['--neon2', 'neon2'],
+    ['--dim', 'dim'], ['--text', 'text'], ['--matrix', 'matrix'],
+  ];
+  try {
+    const saved = JSON.parse(localStorage.getItem('cyberchess_theme') || '{}');
+    const root  = document.documentElement;
+    _TV.forEach(([cssVar, key]) => { if (saved[key]) root.style.setProperty(cssVar, saved[key]); });
+  } catch (_) {}
+})();
+
 // ─── Matrix rain ────────────────────────────────────────────────────────────
 (function () {
   const canvas = document.getElementById('matrix-bg');
