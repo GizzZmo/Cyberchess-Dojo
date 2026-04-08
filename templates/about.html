@@ -407,6 +407,20 @@
 </footer>
 
 <script>
+// ─── Theme: apply saved theme from localStorage ───────────────────────────
+(function () {
+  const _TV = [
+    ['--bg', 'bg'], ['--bg-card', 'bg_card'], ['--bg-border', 'bg_border'],
+    ['--accent', 'accent'], ['--neon', 'neon'], ['--neon2', 'neon2'],
+    ['--dim', 'dim'], ['--text', 'text'], ['--matrix', 'matrix'],
+  ];
+  try {
+    const saved = JSON.parse(localStorage.getItem('cyberchess_theme') || '{}');
+    const root  = document.documentElement;
+    _TV.forEach(([cssVar, key]) => { if (saved[key]) root.style.setProperty(cssVar, saved[key]); });
+  } catch (_) {}
+})();
+
 // ─── Matrix rain ────────────────────────────────────────────────────────────
 (function () {
   const canvas = document.getElementById('matrix-bg');

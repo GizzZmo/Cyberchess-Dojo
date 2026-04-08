@@ -14,6 +14,17 @@ Supported providers
 - ``openai``  : OpenAI GPT-4o / GPT-4o-mini / etc.
 - ``claude``  : Anthropic Claude 3+
 
+Temperature control
+-------------------
+``generate_content`` accepts an optional *temperature* keyword argument
+(0.0–2.0) that controls creativity vs. stability:
+
+- **Low temperature** (e.g. 0.1–0.3): more deterministic, safer defensive play.
+- **High temperature** (e.g. 0.8–1.4): more exploratory, enabling creative
+  sacrifices or novelties the Peace Protocol may want to explore.
+
+If omitted, the provider's default temperature is used.
+
 Usage::
 
     from llm_adapter import create_adapter
@@ -30,6 +41,9 @@ Usage::
     # Agents / orchestrator use adapter just like a GenerativeModel:
     response = adapter.generate_content("What is 1+1?")
     print(response.text)   # "2"
+
+    # Dynamic temperature for creative attacking play
+    response = adapter.generate_content("Find a sacrifice!", temperature=1.2)
 """
 
 import os
@@ -55,8 +69,17 @@ class BaseLLMAdapter(ABC):
     """Abstract base class for LLM adapters."""
 
     @abstractmethod
-    def generate_content(self, prompt: str) -> _LLMResponse:
-        """Generate text from the model and return a response with a ``.text`` attribute."""
+    def generate_content(self, prompt: str, *, temperature: float = None) -> _LLMResponse:
+        """
+        Generate text from the model and return a response with a ``.text`` attribute.
+
+        Args:
+            prompt:      The user / instruction prompt to send to the model.
+            temperature: Optional sampling temperature (0.0–2.0).  Higher values
+                         produce more creative/varied output; lower values produce
+                         more deterministic responses.  Uses the provider default
+                         when ``None``.
+        """
         raise NotImplementedError
 
     @property
@@ -87,8 +110,14 @@ class GeminiAdapter(BaseLLMAdapter):
         self._model_name = model_name
         self.native_model = genai.GenerativeModel(model_name)
 
-    def generate_content(self, prompt: str) -> _LLMResponse:
-        response = self.native_model.generate_content(prompt)
+    def generate_content(self, prompt: str, *, temperature: float = None) -> _LLMResponse:
+        import google.generativeai as genai  # noqa: F401 — needed for GenerationConfig
+
+        if temperature is not None:
+            config = genai.types.GenerationConfig(temperature=temperature)
+            response = self.native_model.generate_content(prompt, generation_config=config)
+        else:
+            response = self.native_model.generate_content(prompt)
         return _LLMResponse(response.text)
 
     @property
@@ -121,11 +150,14 @@ class OpenAIAdapter(BaseLLMAdapter):
         self._client = OpenAI(api_key=key)
         self._model_name = model_name
 
-    def generate_content(self, prompt: str) -> _LLMResponse:
-        response = self._client.chat.completions.create(
-            model=self._model_name,
-            messages=[{"role": "user", "content": prompt}],
-        )
+    def generate_content(self, prompt: str, *, temperature: float = None) -> _LLMResponse:
+        kwargs: dict = {
+            "model":    self._model_name,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        response = self._client.chat.completions.create(**kwargs)
         text = response.choices[0].message.content or ""
         return _LLMResponse(text)
 
@@ -159,12 +191,15 @@ class ClaudeAdapter(BaseLLMAdapter):
         self._client = anthropic.Anthropic(api_key=key)
         self._model_name = model_name
 
-    def generate_content(self, prompt: str) -> _LLMResponse:
-        message = self._client.messages.create(
-            model=self._model_name,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
+    def generate_content(self, prompt: str, *, temperature: float = None) -> _LLMResponse:
+        kwargs: dict = {
+            "model":      self._model_name,
+            "max_tokens": 1024,
+            "messages":   [{"role": "user", "content": prompt}],
+        }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        message = self._client.messages.create(**kwargs)
         text = message.content[0].text if message.content else ""
         return _LLMResponse(text)
 

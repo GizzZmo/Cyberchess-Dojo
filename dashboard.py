@@ -28,6 +28,7 @@ API endpoints
 import io
 import json
 import os
+import re
 from pathlib import Path
 
 import chess
@@ -55,7 +56,72 @@ _SETTINGS_DEFAULTS: dict = {
     "gemini_api_key": "",
     "openai_api_key": "",
     "anthropic_api_key": "",
+    # Theme: a dict mapping CSS variable names to hex colours.
+    # Empty dict means "use the built-in Cyberpunk defaults".
+    "theme": {},
 }
+
+# Built-in named palettes available through the Theme Builder UI.
+THEME_PRESETS: dict[str, dict[str, str]] = {
+    "cyberpunk": {
+        "bg": "#0d0d1a",
+        "bg_card": "#0f1626",
+        "bg_border": "#0d2244",
+        "accent": "#e94560",
+        "neon": "#4ecca3",
+        "neon2": "#00f0ff",
+        "dim": "#7a8a9a",
+        "text": "#d0d8e4",
+        "matrix": "#00ff41",
+    },
+    "matrix": {
+        "bg": "#0a0f0a",
+        "bg_card": "#0d150d",
+        "bg_border": "#1a3a1a",
+        "accent": "#00ff41",
+        "neon": "#39ff14",
+        "neon2": "#7fff00",
+        "dim": "#4a7a4a",
+        "text": "#b8d8b8",
+        "matrix": "#00ff41",
+    },
+    "ocean": {
+        "bg": "#050d1a",
+        "bg_card": "#081428",
+        "bg_border": "#0a2040",
+        "accent": "#0080ff",
+        "neon": "#00cfff",
+        "neon2": "#40e0d0",
+        "dim": "#4a6a8a",
+        "text": "#b8d0e8",
+        "matrix": "#00cfff",
+    },
+    "crimson": {
+        "bg": "#160808",
+        "bg_card": "#1e0a0a",
+        "bg_border": "#3a1010",
+        "accent": "#ff2244",
+        "neon": "#ff6633",
+        "neon2": "#ffaa00",
+        "dim": "#8a5a5a",
+        "text": "#e8d0d0",
+        "matrix": "#ff2244",
+    },
+    "void": {
+        "bg": "#0a0a14",
+        "bg_card": "#10101e",
+        "bg_border": "#1e1a3a",
+        "accent": "#9933ff",
+        "neon": "#cc66ff",
+        "neon2": "#ff66cc",
+        "dim": "#6a5a8a",
+        "text": "#d8d0e8",
+        "matrix": "#9933ff",
+    },
+}
+
+# Pre-compiled hex colour validator used by the theme endpoint.
+_HEX_COLOUR_RE = re.compile(r'^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$')
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +347,53 @@ def api_settings_post():
         return jsonify({"ok": True})
     except OSError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/theme", methods=["GET"])
+def api_theme_get():
+    """Return the active theme overrides and all built-in preset palettes."""
+    stored = _read_json(_SETTINGS_FILE)
+    active = stored.get("theme", {})
+    return jsonify({"active": active, "presets": THEME_PRESETS})
+
+
+@app.route("/api/theme", methods=["POST"])
+def api_theme_post():
+    """
+    Save a theme.
+
+    Accepts JSON with either:
+      ``{"preset": "matrix"}``          — apply a named built-in preset, or
+      ``{"theme": {"bg": "#…", …}}``    — save arbitrary CSS variable overrides, or
+      ``{"reset": true}``               — clear custom overrides (restore defaults).
+    """
+    body = request.get_json(force=True, silent=True) or {}
+
+    if body.get("reset"):
+        new_theme: dict = {}
+    elif "preset" in body:
+        preset_name = body["preset"]
+        if preset_name not in THEME_PRESETS:
+            return jsonify({"ok": False, "error": f"Unknown preset '{preset_name}'"}), 400
+        new_theme = dict(THEME_PRESETS[preset_name])
+    else:
+        theme_body = body.get("theme", {})
+        if not isinstance(theme_body, dict):
+            return jsonify({"ok": False, "error": "theme must be a JSON object"}), 400
+        # Validate: only accept hex colour values
+        for var, val in theme_body.items():
+            if not isinstance(val, str) or not _HEX_COLOUR_RE.match(val):
+                return jsonify({"ok": False, "error": f"Invalid colour value for '{var}'"}), 400
+        new_theme = theme_body
+
+    stored = _read_json(_SETTINGS_FILE)
+    stored["theme"] = new_theme
+    try:
+        with open(_SETTINGS_FILE, "w") as f:
+            json.dump(stored, f, indent=2)
+        return jsonify({"ok": True, "theme": new_theme})
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not save theme"}), 500
 
 
 # ---------------------------------------------------------------------------

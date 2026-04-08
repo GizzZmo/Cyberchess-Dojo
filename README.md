@@ -38,8 +38,13 @@ Every game is saved as a [PGN](https://en.wikipedia.org/wiki/Portable_Game_Notat
 │  OpeningAgent  TacticalAgent  PositionalAgent        │
 │                EndgameAgent                          │
 │                   │                                  │
+│     Peace Protocol (optional, use_peace_protocol=True)│
+│   ┌───────────────┴───────────────┐                  │
+│  LLM policy (top-3 moves)  Alpha-Beta search         │
+│                   │       TranspositionTable cache    │
+│                   └───────────────┘                  │
 │            LLM Adapter (Gemini / OpenAI / Claude)    │
-│                   │                                  │
+│                   │  (optional temperature arg)      │
 │            UCI move ──► board.push()                 │
 │                   │                                  │
 │   training_data.pgn  elo_history.json  settings.json │
@@ -100,6 +105,76 @@ Additional selection safeguards now applied by the orchestrator:
 - **Endgame conversion filter**: in endgames, candidate moves are re-scored for king activity and passed-pawn conversion potential before final selection.
 
 When candidate analyses disagree, the orchestrator still makes a final grandmaster-style ranking call to synthesise the strongest move.
+
+---
+
+## ⚔️ Peace Protocol — Hybrid Search-Transformer Engine
+
+The **Peace Protocol** is an opt-in upgrade to the orchestrator that replaces best-of-N sampling with a hybrid **alpha-beta search guided by LLM strategic priors**.
+
+### How it works
+
+1. **Policy query** — The LLM is called *once* per root position and asked to name its top-3 "humanly logical" candidate moves.
+2. **Guided move ordering** — Those 3 moves are sorted first in the search tree (before captures, then checks).  This drastically improves alpha-beta cutoffs, reducing the effective branching factor from ~35 to ~3.
+3. **Negamax alpha-beta** — A standard negamax search evaluates the tree to configurable depth, with the LLM-policy moves always explored at full depth.
+4. **Transposition table** — A `TranspositionTable` (depth-preferred replacement, FEN keys, EXACT/LOWER/UPPER flags) caches all evaluations so the same position is never re-computed across branches.  The table persists across moves within a game.
+5. **Static leaf evaluation** — Quiet leaf nodes use material balance + PeSTO piece-square tables (no additional LLM call at every node).
+
+### Enabling the Peace Protocol
+
+Pass `use_peace_protocol=True` to `get_best_move()`:
+
+```python
+from orchestrator import ChessOrchestrator
+
+orchestrator = ChessOrchestrator(adapter)
+
+# Standard best-of-N (default)
+move = orchestrator.get_best_move(board)
+
+# Peace Protocol — LLM-guided alpha-beta
+move = orchestrator.get_best_move(board, use_peace_protocol=True)
+```
+
+The opening phase always uses theory / `OpeningAgent` regardless of this flag.
+
+### Transposition Table (`transposition_table.py`)
+
+```python
+from transposition_table import TranspositionTable, TTFlag
+
+tt = TranspositionTable(max_size=1_000_000)
+tt.store(board.fen(), score=42, depth=6, move="e2e4", flag=TTFlag.EXACT)
+
+if tt.contains(fen) and tt.get_depth(fen) >= required_depth:
+    cached_score = tt.get_score(fen)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `max_size` | Maximum entries (default 1 000 000) |
+| `flag` | `TTFlag.EXACT`, `TTFlag.LOWER` (beta cutoff), or `TTFlag.UPPER` (all-node) |
+| `depth` | Depth-preferred replacement — a shallower entry never evicts a deeper one |
+
+---
+
+## 🌡️ LLM Temperature Control
+
+All three LLM adapters now accept an optional `temperature` argument on `generate_content()`:
+
+```python
+# Deterministic / defensive play
+response = adapter.generate_content(prompt, temperature=0.1)
+
+# Creative / aggressive play
+response = adapter.generate_content(prompt, temperature=1.2)
+```
+
+This follows the principle described in the Peace Protocol spec:
+- **Low temperature** (0.1–0.3) for defensive, stable positions.
+- **High temperature** (0.8–1.4) for attacking positions where a surprising sacrifice might be optimal.
+
+When `temperature` is omitted, the provider's default is used — existing code requires no changes.
 
 ---
 
@@ -386,8 +461,41 @@ Click the **⚙ Settings** button in the navigation bar to open the settings mod
 | Gemini API key | Google AI Studio key |
 | OpenAI API key | OpenAI platform key |
 | Anthropic API key | Anthropic key |
-
 > API key fields are stored locally in `settings.json` and are partially masked when loaded back into the browser (`****xxxx`).
+
+#### 🎨 Theme Builder
+Click the **🎨 Theme** button in the navigation bar to open the Theme Builder modal.
+
+**Preset palettes**
+
+| Preset | Description |
+|--------|-------------|
+| **Cyberpunk** | Original dark blue with neon green and red (default) |
+| **Matrix** | Deep black with Matrix-green monochrome accents |
+| **Ocean** | Midnight navy with electric cyan and teal |
+| **Crimson** | Dark red-black with fiery orange and amber |
+| **Void** | Near-black with violet and magenta neon |
+
+**Custom colours**
+
+Every CSS variable can be customised independently using a colour picker:
+`Background`, `Card BG`, `Border`, `Accent`, `Neon`, `Neon 2`, `Dim`, `Text`, `Matrix`.
+
+A live preview swatch row updates as you change values.  Changes are applied instantly to the page so you can preview before saving.
+
+- **Apply & Save** — persists the theme to `settings.json` via `POST /api/theme` and stores it in `localStorage` so the About and Wiki pages also pick it up.
+- **Reset to Default** — clears all overrides and restores the original Cyberpunk palette.
+
+The theme persists across browser sessions and applies to the Dashboard, About, and Wiki pages automatically.
+
+**Theme API** (`dashboard.py`)
+
+| Endpoint | Method | Payload | Description |
+|----------|--------|---------|-------------|
+| `GET /api/theme` | — | — | Returns `{"active": {…}, "presets": {…}}` |
+| `POST /api/theme` | JSON | `{"preset": "matrix"}` | Apply a named preset |
+| `POST /api/theme` | JSON | `{"theme": {"bg": "#…", …}}` | Save custom overrides |
+| `POST /api/theme` | JSON | `{"reset": true}` | Clear overrides (restore defaults) |
 
 ### Dashboard API endpoints
 
@@ -405,6 +513,8 @@ Click the **⚙ Settings** button in the navigation bar to open the settings mod
 | `POST /api/pause` | JSON `{"paused": bool}` | Set or toggle pause flag |
 | `GET /api/settings` | — | Return current settings (API keys partially masked) |
 | `POST /api/settings` | JSON | Persist settings to `settings.json` |
+| `GET /api/theme` | — | Return `{"active": {…}, "presets": {…}}` |
+| `POST /api/theme` | JSON | Apply preset, save custom overrides, or reset to defaults |
 
 ---
 
@@ -479,15 +589,19 @@ Cyberchess-Dojo/
 │   ├── positional_agent.py     # Positional / strategic specialist
 │   └── endgame_agent.py        # Endgame technique specialist
 ├── templates/
-│   ├── index.html              # Web dashboard — live board, move list, settings, import/export
+│   ├── index.html              # Web dashboard — live board, move list, settings, import/export, theme builder
 │   ├── about.html              # About page — project overview, features, architecture
 │   └── wiki.html               # Wiki — full in-browser documentation
-├── orchestrator.py             # ChessOrchestrator — routes board states to agents
+├── tests/
+│   └── test_search_engine.py   # Unit tests for TranspositionTable and PeaceProtocolEngine
+├── orchestrator.py             # ChessOrchestrator — routes board states to agents + Peace Protocol
+├── search_engine.py            # PeaceProtocolEngine — alpha-beta + LLM policy priors
+├── transposition_table.py      # TranspositionTable — FEN-keyed position cache
 ├── cyberchess.py               # Main arena script (loop mode, pause support, Elo, dashboard)
-├── llm_adapter.py              # Unified LLM interface (Gemini, OpenAI, Claude)
+├── llm_adapter.py              # Unified LLM interface (Gemini, OpenAI, Claude + temperature)
 ├── elo_tracker.py              # Elo rating system with JSON persistence
 ├── finetune_pipeline.py        # PGN → JSONL fine-tuning dataset generator
-├── dashboard.py                # Flask web dashboard server (settings, pause, import/export)
+├── dashboard.py                # Flask web dashboard server (settings, pause, import/export, theme API)
 ├── scripts/
 │   └── download_pgn_archive.py # Download PGN Mentor archives (Top100, tournaments 2024/2025)
 ├── pgn_archive/                # Git-ignored storage for downloaded PGN archives (README + .gitkeep only)
@@ -496,7 +610,7 @@ Cyberchess-Dojo/
 ├── elo_history.json            # Generated — Elo rating history
 ├── game_state.json             # Generated — live board state for dashboard
 ├── pause_flag.json             # Generated — pause/resume flag written by dashboard
-├── settings.json               # Generated — persisted UI settings (API keys, skill level, …)
+├── settings.json               # Generated — persisted UI settings (API keys, skill level, theme, …)
 ├── finetune_data.jsonl         # Generated — fine-tuning dataset
 ├── CONTRIBUTING.md
 ├── LICENSE
@@ -659,6 +773,10 @@ These files are created automatically during a run and are **not** committed to 
 - [x] Settings panel — configure all options and enter API keys via the browser UI
 - [x] Matrix cyberpunk aesthetic — animated matrix rain, neon glow palette, CRT scanline overlay
 - [x] Automated AI training pipeline — `train.yml` runs games, tracks Elo, adapts difficulty, and generates a fine-tuning dataset on a weekly schedule or on demand
+- [x] Peace Protocol — hybrid search-transformer engine with LLM policy priors and alpha-beta search (`search_engine.py`)
+- [x] Transposition table — FEN-keyed position cache with depth-preferred replacement (`transposition_table.py`)
+- [x] LLM temperature control — per-call temperature on all three providers for tunable creativity
+- [x] Theme Builder — in-dashboard colour-theme editor with preset palettes and custom colour pickers
 
 ---
 

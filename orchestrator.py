@@ -10,6 +10,20 @@ for complex positions.  The orchestrator pipeline:
   4. If agents agree, return immediately.
   5. If agents disagree, call the LLM one more time to synthesise a final decision
      that weighs all the expert analyses.
+
+Peace Protocol
+--------------
+The orchestrator supports an optional ``use_peace_protocol`` flag on
+:meth:`ChessOrchestrator.get_best_move`.  When enabled, the middlegame and
+endgame move-selection is handled by a :class:`~search_engine.PeaceProtocolEngine`
+that:
+
+  1. Queries the LLM for its top-3 "humanly logical" candidate moves.
+  2. Prioritises those moves for deep alpha-beta exploration.
+  3. Uses a transposition table to cache evaluations across branches.
+
+This reduces the effective branching factor while still leveraging the LLM's
+strategic intuition, mirroring the Peace Protocol described in the system spec.
 """
 
 import re
@@ -17,6 +31,7 @@ import chess
 from collections import Counter
 from agents import OpeningAgent, TacticalAgent, PositionalAgent, EndgameAgent
 import opening_book as ob
+from search_engine import PeaceProtocolEngine
 
 _PIECE_VALUES = {
     chess.PAWN: 1,
@@ -259,6 +274,9 @@ class ChessOrchestrator:
 
         orchestrator = ChessOrchestrator(adapter)
         move = orchestrator.get_best_move(board)
+
+        # Enable Peace Protocol for deeper, LLM-guided alpha-beta search
+        move = orchestrator.get_best_move(board, use_peace_protocol=True)
     """
 
     def __init__(self, model):
@@ -267,6 +285,8 @@ class ChessOrchestrator:
         self.tactical_agent = TacticalAgent(model)
         self.positional_agent = PositionalAgent(model)
         self.endgame_agent = EndgameAgent(model)
+        # Shared Peace Protocol engine — transposition table is reused across moves.
+        self._peace_engine = PeaceProtocolEngine(model=model)
 
     # ------------------------------------------------------------------
     # Phase detection
@@ -423,7 +443,7 @@ Task:
     # Main entry point (best-of-N)
     # ------------------------------------------------------------------
 
-    def get_best_move(self, board: chess.Board, n: int = _N_SAMPLES) -> chess.Move:
+    def get_best_move(self, board: chess.Board, n: int = _N_SAMPLES, use_peace_protocol: bool = False) -> chess.Move:
         """
         Select the best move for Black using best-of-N sampling.
 
@@ -438,12 +458,19 @@ Task:
           ⌊n/2⌋ from PositionalAgent.
         * **Quiet middlegame**: ⌈n/2⌉ from PositionalAgent + ⌊n/2⌋ from
           TacticalAgent.
+
+        Args:
+            board:              The current board position.
+            n:                  Number of independent LLM samples (best-of-N).
+            use_peace_protocol: When ``True``, middlegame and endgame moves are
+                                selected via the :class:`~search_engine.PeaceProtocolEngine`
+                                (LLM-guided alpha-beta search with a transposition
+                                table) rather than pure best-of-N sampling.
         """
         phase = self._detect_phase(board)
         print(f"  [Orchestrator] Phase: {phase} | Move: {board.fullmove_number} | N={n}")
 
-        candidates: list[tuple[chess.Move, str]] = []
-
+        # Opening always uses theory / opening agents (no search needed).
         if phase == "opening":
             theory_move = _preferred_opening_move(board)
             if theory_move is not None:
@@ -451,8 +478,16 @@ Task:
                 return theory_move
             print(f"  [Orchestrator] → OpeningAgent ×{n}")
             candidates = self.opening_agent.get_move_candidates(board, n)
+            return self._rank_candidates(board, candidates)
 
-        elif phase == "endgame":
+        # Peace Protocol: delegate to the hybrid search engine.
+        if use_peace_protocol:
+            print("  [Orchestrator] → PeaceProtocol (alpha-beta + LLM policy)")
+            return self._peace_engine.search(board)
+
+        candidates: list[tuple[chess.Move, str]] = []
+
+        if phase == "endgame":
             print(f"  [Orchestrator] → EndgameAgent ×{n}")
             candidates = self.endgame_agent.get_move_candidates(board, n)
 
