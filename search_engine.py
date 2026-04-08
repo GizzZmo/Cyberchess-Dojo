@@ -201,8 +201,9 @@ def _move_order_key(board: chess.Board, move: chess.Move, policy_set: set[str]) 
         return 1
     captured = board.piece_at(move.to_square)
     if captured:
-        victim_val   = _PIECE_VALUE.get(captured.piece_type, 0)
-        attacker_val = _PIECE_VALUE.get(board.piece_at(move.from_square).piece_type, 0)
+        victim_val = _PIECE_VALUE.get(captured.piece_type, 0)
+        mover = board.piece_at(move.from_square)
+        attacker_val = _PIECE_VALUE.get(mover.piece_type, 0) if mover else 0
         return 2 - victim_val // 100 + attacker_val // 1000  # higher victim = earlier
     if board.gives_check(move):
         return 3

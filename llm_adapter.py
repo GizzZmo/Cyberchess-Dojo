@@ -111,7 +111,7 @@ class GeminiAdapter(BaseLLMAdapter):
         self.native_model = genai.GenerativeModel(model_name)
 
     def generate_content(self, prompt: str, *, temperature: float = None) -> _LLMResponse:
-        import google.generativeai as genai
+        import google.generativeai as genai  # noqa: F401 — needed for GenerationConfig
 
         if temperature is not None:
             config = genai.types.GenerationConfig(temperature=temperature)

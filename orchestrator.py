@@ -281,10 +281,10 @@ class ChessOrchestrator:
 
     def __init__(self, model):
         self.model = model
-        self.opening_agent    = OpeningAgent(model)
-        self.tactical_agent   = TacticalAgent(model)
+        self.opening_agent = OpeningAgent(model)
+        self.tactical_agent = TacticalAgent(model)
         self.positional_agent = PositionalAgent(model)
-        self.endgame_agent    = EndgameAgent(model)
+        self.endgame_agent = EndgameAgent(model)
         # Shared Peace Protocol engine — transposition table is reused across moves.
         self._peace_engine = PeaceProtocolEngine(model=model)
 
