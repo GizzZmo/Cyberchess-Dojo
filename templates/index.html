@@ -1046,7 +1046,11 @@ function _renderColorPickers() {
     const inp = document.createElement('input');
     inp.type  = 'color';
     inp.id    = 'tc-' + key;
-    inp.value = _activeTheme[key] || '#000000';
+    // Fall back to the live CSS variable value (from :root or any active theme),
+    // then to the Cyberpunk default, so the picker always shows a meaningful colour.
+    const cssVal = getComputedStyle(document.documentElement)
+      .getPropertyValue('--' + key.replace(/_/g, '-')).trim();
+    inp.value = _activeTheme[key] || cssVal || '#0d0d1a';
     inp.addEventListener('input', () => {
       _activeTheme[key] = inp.value;
       _selectedPreset   = null;  // user customised — clear preset highlight

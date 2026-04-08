@@ -28,6 +28,7 @@ API endpoints
 import io
 import json
 import os
+import re
 from pathlib import Path
 
 import chess
@@ -118,6 +119,9 @@ THEME_PRESETS: dict[str, dict[str, str]] = {
         "matrix": "#9933ff",
     },
 }
+
+# Pre-compiled hex colour validator used by the theme endpoint.
+_HEX_COLOUR_RE = re.compile(r'^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$')
 
 
 # ---------------------------------------------------------------------------
@@ -377,11 +381,9 @@ def api_theme_post():
         if not isinstance(theme_body, dict):
             return jsonify({"ok": False, "error": "theme must be a JSON object"}), 400
         # Validate: only accept hex colour values
-        import re as _re
-        _hex_re = _re.compile(r'^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$')
         for var, val in theme_body.items():
-            if not isinstance(val, str) or not _hex_re.match(val):
-                return jsonify({"ok": False, "error": f"Invalid colour value for '{var}': {val!r}"}), 400
+            if not isinstance(val, str) or not _HEX_COLOUR_RE.match(val):
+                return jsonify({"ok": False, "error": f"Invalid colour value for '{var}'"}), 400
         new_theme = theme_body
 
     stored = _read_json(_SETTINGS_FILE)
@@ -390,8 +392,8 @@ def api_theme_post():
         with open(_SETTINGS_FILE, "w") as f:
             json.dump(stored, f, indent=2)
         return jsonify({"ok": True, "theme": new_theme})
-    except OSError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not save theme"}), 500
 
 
 # ---------------------------------------------------------------------------
